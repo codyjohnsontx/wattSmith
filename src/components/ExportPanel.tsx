@@ -25,6 +25,7 @@ function downloadTextFile(fileName: string, contents: string) {
 
 export function ExportPanel({ workout }: ExportPanelProps) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
   const [rangeStrategy, setRangeStrategy] = useState<ExportRangeStrategy>("midpoint");
   const [previewFormat, setPreviewFormat] = useState<"mrc" | "erg">("mrc");
   const summary = calculateWorkoutSummary(workout);
@@ -108,15 +109,23 @@ TSS estimate: ${summary.trainingStressScore}`;
           <button
             type="button"
             onClick={async () => {
-              await navigator.clipboard.writeText(trainerRoadInstructions);
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1800);
+              try {
+                await navigator.clipboard.writeText(trainerRoadInstructions);
+                setCopyError("");
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1800);
+              } catch (error) {
+                console.error("Failed to copy TrainerRoad instructions", error);
+                setCopied(false);
+                setCopyError("Could not copy instructions. You can still select the text below.");
+              }
             }}
             className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:border-cyan-300"
           >
             {copied ? "Copied" : "Copy import instructions"}
           </button>
         </div>
+        {copyError ? <p className="text-sm text-amber-200 sm:col-start-2">{copyError}</p> : null}
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">

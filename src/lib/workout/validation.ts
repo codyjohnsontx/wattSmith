@@ -1,9 +1,53 @@
 import { getStepTargetMode } from "./flatten";
-import type { Workout, WorkoutStep, WorkoutValidationIssue } from "./types";
+import type { Workout, WorkoutCue, WorkoutStep, WorkoutValidationIssue } from "./types";
+
+function validateCues(
+  cues: WorkoutCue[] | undefined,
+  ownerId: string,
+  ownerLabel: string,
+  stepId?: string,
+): WorkoutValidationIssue[] {
+  const issues: WorkoutValidationIssue[] = [];
+
+  for (const cue of cues ?? []) {
+    const cueLabel = cue.id || "cue";
+
+    if (!Number.isFinite(cue.atSeconds) || cue.atSeconds < 0) {
+      issues.push({
+        id: `${ownerId}-${cueLabel}-cue-start`,
+        severity: "error",
+        message: `${ownerLabel} has a cue with an invalid start time.`,
+        stepId,
+      });
+    }
+
+    if (!Number.isFinite(cue.durationSeconds) || cue.durationSeconds <= 0) {
+      issues.push({
+        id: `${ownerId}-${cueLabel}-cue-duration`,
+        severity: "error",
+        message: `${ownerLabel} has a cue with an invalid duration.`,
+        stepId,
+      });
+    }
+
+    if (typeof cue.text !== "string" || !cue.text.trim()) {
+      issues.push({
+        id: `${ownerId}-${cueLabel}-cue-text`,
+        severity: "error",
+        message: `${ownerLabel} has a cue without text.`,
+        stepId,
+      });
+    }
+  }
+
+  return issues;
+}
 
 function validateStep(step: WorkoutStep, path: string): WorkoutValidationIssue[] {
   const issues: WorkoutValidationIssue[] = [];
   const label = step.label || path;
+
+  issues.push(...validateCues(step.cues, step.id, label, step.id));
 
   if (!step.label.trim()) {
     issues.push({
@@ -95,6 +139,8 @@ function validateStep(step: WorkoutStep, path: string): WorkoutValidationIssue[]
 
 export function validateWorkout(workout: Workout): WorkoutValidationIssue[] {
   const issues: WorkoutValidationIssue[] = [];
+
+  issues.push(...validateCues(workout.cues, "workout", "Workout"));
 
   if (!workout.name.trim()) {
     issues.push({

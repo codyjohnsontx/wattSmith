@@ -148,6 +148,7 @@ function StepEditor({
   index,
   siblingCount,
   selected,
+  selectedStepId,
   onSelect,
   onChange,
   onMove,
@@ -160,6 +161,7 @@ function StepEditor({
   index: number;
   siblingCount: number;
   selected: boolean;
+  selectedStepId?: string;
   onSelect: (stepId: string) => void;
   onChange: (step: WorkoutStep) => void;
   onMove: (fromIndex: number, toIndex: number) => void;
@@ -223,7 +225,17 @@ function StepEditor({
       className={`rounded-lg border p-4 transition ${
         selected ? "border-cyan-300 bg-cyan-300/5" : "border-slate-800 bg-slate-950/70"
       }`}
+      tabIndex={0}
+      aria-label={`Select ${step.label}`}
       onClick={() => onSelect(step.id)}
+      onKeyDown={(event) => {
+        if (event.currentTarget !== event.target) return;
+
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(step.id);
+        }
+      }}
     >
       <div className="grid gap-3">
         <div className="min-w-0">
@@ -368,7 +380,8 @@ function StepEditor({
               depth={depth + 1}
               index={childIndex}
               siblingCount={step.children?.length ?? 0}
-              selected={selected && child.id === step.id}
+              selected={child.id === selectedStepId}
+              selectedStepId={selectedStepId}
               onSelect={onSelect}
               onChange={(updatedChild) =>
                 onChange({
@@ -573,6 +586,7 @@ export function WorkoutEditor({
             index={index}
             siblingCount={workout.blocks.length}
             selected={selectedStep?.id === step.id || selectedStepId === step.id}
+            selectedStepId={selectedStepId}
             onSelect={onSelectStep}
             onChange={(updatedStep) =>
               updateWorkout({

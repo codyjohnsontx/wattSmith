@@ -325,6 +325,8 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
 
   const updateHoverFromPointer = useCallback(
     (event: { clientX: number; clientY: number }, pinned: boolean) => {
+      if (pinnedSegmentId && !pinned) return;
+
       const seconds = getSecondsFromPointer(event.clientX);
       if (seconds === undefined) return;
 
@@ -339,7 +341,14 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
         onSelectStep?.(segment.parentStepId);
       }
     },
-    [buildHoverState, captureChartBounds, getSecondsFromPointer, onSelectStep, segments],
+    [
+      buildHoverState,
+      captureChartBounds,
+      getSecondsFromPointer,
+      onSelectStep,
+      pinnedSegmentId,
+      segments,
+    ],
   );
 
   const showSegmentTooltip = useCallback(
@@ -348,18 +357,19 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
       pinned: boolean,
       event?: { clientX: number; clientY: number },
     ) => {
+      if (pinnedSegmentId && !pinned) return;
+
       const seconds = segment.startSeconds + segment.durationSeconds / 2;
-      const container = captureChartBounds();
+      captureChartBounds();
+      const svgRect = svgRef.current?.getBoundingClientRect();
+      const viewBoxX = x(seconds);
+      const viewBoxY = y((segment.startWatts + segment.endWatts) / 2);
       const clientX =
         event?.clientX ??
-        (container
-          ? container.left + x(seconds)
-          : x(seconds));
+        (svgRect ? svgRect.left + viewBoxX * (svgRect.width / chartWidth) : viewBoxX);
       const clientY =
         event?.clientY ??
-        (container
-          ? container.top + y((segment.startWatts + segment.endWatts) / 2)
-          : y((segment.startWatts + segment.endWatts) / 2));
+        (svgRect ? svgRect.top + viewBoxY * (svgRect.height / chartHeight) : viewBoxY);
 
       setHoverState(buildHoverState(segment, seconds, clientX, clientY, pinned));
 
@@ -368,7 +378,7 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
         onSelectStep?.(segment.parentStepId);
       }
     },
-    [buildHoverState, captureChartBounds, onSelectStep, x, y],
+    [buildHoverState, captureChartBounds, onSelectStep, pinnedSegmentId, x, y],
   );
 
   const clearTransientHover = useCallback(() => {

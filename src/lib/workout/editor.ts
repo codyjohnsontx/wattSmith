@@ -109,7 +109,7 @@ export function duplicateStep(step: WorkoutStep): WorkoutStep {
 }
 
 export function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
-  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) {
+  if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= items.length || toIndex < 0) {
     return items;
   }
 

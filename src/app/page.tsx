@@ -18,7 +18,7 @@ import {
   saveWorkout,
 } from "@/lib/workout/storage";
 import type { AthleteProfile, IntegrationConnection, Workout } from "@/lib/workout/types";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type WorkspaceTab = "builder" | "library" | "profile" | "export";
 
@@ -58,6 +58,7 @@ export default function Home() {
   const [integrations, setIntegrations] = useState<IntegrationConnection[]>([]);
   const [selectedStepId, setSelectedStepId] = useState<string | undefined>("warmup");
   const [status, setStatus] = useState("Ready");
+  const statusTimeoutRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -69,12 +70,19 @@ export default function Home() {
 
       if (storedWorkouts[0]) {
         setWorkout(storedWorkouts[0]);
+        setSelectedStepId(undefined);
       } else {
         setWorkout({ ...cloneDefaultWorkout(), ftp: storedProfile.ftp });
+        setSelectedStepId(undefined);
       }
     }, 0);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (statusTimeoutRef.current !== undefined) {
+        window.clearTimeout(statusTimeoutRef.current);
+      }
+    };
   }, []);
 
   const ftpExamples = useMemo(
@@ -89,8 +97,15 @@ export default function Home() {
   const profileWarnings = useMemo(() => getProfileWarnings(profile, workout), [profile, workout]);
 
   const flashStatus = (message: string) => {
+    if (statusTimeoutRef.current !== undefined) {
+      window.clearTimeout(statusTimeoutRef.current);
+    }
+
     setStatus(message);
-    window.setTimeout(() => setStatus("Ready"), 1800);
+    statusTimeoutRef.current = window.setTimeout(() => {
+      setStatus("Ready");
+      statusTimeoutRef.current = undefined;
+    }, 1800);
   };
 
   const updateWorkout = (nextWorkout: Workout) => {
@@ -118,7 +133,9 @@ export default function Home() {
     const nextSavedWorkouts = deleteWorkout(id);
     setSavedWorkouts(nextSavedWorkouts);
     if (workout.id === id) {
-      setWorkout(nextSavedWorkouts[0] ?? createBlankWorkout(profile.ftp));
+      const nextWorkout = nextSavedWorkouts[0] ?? createBlankWorkout(profile.ftp);
+      setWorkout(nextWorkout);
+      setSelectedStepId(undefined);
     }
     flashStatus("Deleted workout");
   };

@@ -1,4 +1,5 @@
 import { defaultWorkout } from "./defaultWorkout";
+import { createId } from "./math";
 import type {
   Workout,
   WorkoutCategory,
@@ -425,7 +426,7 @@ export function cloneTemplateWorkout(template: WorkoutTemplate, ftp?: number): W
   const timestamp = new Date().toISOString();
   return {
     ...structuredClone(template.defaultWorkout),
-    id: `${template.defaultWorkout.id}-${timestamp}`,
+    id: `${template.defaultWorkout.id}-${createId("clone")}`,
     ftp: ftp ?? template.defaultWorkout.ftp,
     createdAt: timestamp,
     updatedAt: timestamp,

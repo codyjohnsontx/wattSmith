@@ -23,6 +23,50 @@ export const defaultIntegrationConnections: IntegrationConnection[] = [
   { provider: "trainingpeaks", status: "not_connected" },
 ];
 
+const experienceLevels = ["new", "recreational", "serious", "competitive", "elite"];
+const integrationProviders = ["strava", "garmin", "trainingpeaks"];
+const integrationStatuses = ["not_connected", "connected", "expired"];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isAthleteProfile(value: unknown): value is AthleteProfile {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.ftp === "number" &&
+    Number.isFinite(value.ftp) &&
+    value.ftp > 0 &&
+    typeof value.experienceLevel === "string" &&
+    experienceLevels.includes(value.experienceLevel) &&
+    typeof value.weeklyHours === "number" &&
+    Number.isFinite(value.weeklyHours) &&
+    isStringArray(value.availableDays) &&
+    typeof value.primaryGoal === "string" &&
+    (value.targetEventDate === undefined || typeof value.targetEventDate === "string") &&
+    typeof value.preferredWorkoutDurationMinutes === "number" &&
+    Number.isFinite(value.preferredWorkoutDurationMinutes) &&
+    isStringArray(value.constraints) &&
+    typeof value.updatedAt === "string"
+  );
+}
+
+function isIntegrationConnection(value: unknown): value is IntegrationConnection {
+  return (
+    isRecord(value) &&
+    typeof value.provider === "string" &&
+    integrationProviders.includes(value.provider) &&
+    typeof value.status === "string" &&
+    integrationStatuses.includes(value.status) &&
+    (value.connectedAt === undefined || typeof value.connectedAt === "string")
+  );
+}
+
 function withWorkoutDefaults(workout: Workout): Workout {
   return {
     ...workout,
@@ -51,6 +95,29 @@ function withWorkoutDefaults(workout: Workout): Workout {
   };
 }
 
+function safeWorkoutDefaults(value: unknown): Workout | undefined {
+  try {
+    if (!isRecord(value) || !Array.isArray(value.blocks)) {
+      throw new Error("Workout is missing blocks.");
+    }
+
+    return withWorkoutDefaults(value as unknown as Workout);
+  } catch (error) {
+    console.warn("Skipping malformed workout from localStorage", error);
+    return undefined;
+  }
+}
+
+function normalizeWorkouts(value: unknown): Workout[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(safeWorkoutDefaults)
+    .filter((workout): workout is Workout => workout !== undefined);
+}
+
 export function loadWorkouts(): Workout[] {
   if (typeof window === "undefined") {
     return [];
@@ -60,7 +127,7 @@ export function loadWorkouts(): Workout[] {
     const currentRaw = window.localStorage.getItem(WORKOUTS_STORAGE_KEY);
     if (currentRaw) {
       const parsed = JSON.parse(currentRaw);
-      return Array.isArray(parsed) ? parsed.map(withWorkoutDefaults) : [];
+      return normalizeWorkouts(parsed);
     }
 
     const legacyRaw = window.localStorage.getItem(LEGACY_WORKOUTS_STORAGE_KEY);
@@ -69,7 +136,7 @@ export function loadWorkouts(): Workout[] {
     }
 
     const parsed = JSON.parse(legacyRaw);
-    const migrated = Array.isArray(parsed) ? parsed.map(withWorkoutDefaults) : [];
+    const migrated = normalizeWorkouts(parsed);
     window.localStorage.setItem(WORKOUTS_STORAGE_KEY, JSON.stringify(migrated));
     return migrated;
   } catch {
@@ -105,7 +172,8 @@ export function loadProfile(): AthleteProfile {
       return defaultProfile;
     }
 
-    return { ...defaultProfile, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    return isAthleteProfile(parsed) ? { ...defaultProfile, ...parsed } : defaultProfile;
   } catch {
     return defaultProfile;
   }
@@ -129,7 +197,9 @@ export function loadIntegrationConnections(): IntegrationConnection[] {
     }
 
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : defaultIntegrationConnections;
+    return Array.isArray(parsed) && parsed.every(isIntegrationConnection)
+      ? parsed
+      : defaultIntegrationConnections;
   } catch {
     return defaultIntegrationConnections;
   }

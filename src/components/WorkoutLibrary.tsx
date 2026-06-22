@@ -125,11 +125,13 @@ export function WorkoutLibrary({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search workouts"
+            aria-label="Search workouts"
             className="h-11 rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300"
           />
           <select
             value={category}
             onChange={(event) => setCategory(event.target.value as "all" | WorkoutCategory)}
+            aria-label="Filter workouts by category"
             className="h-11 rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm capitalize text-slate-100 outline-none transition focus:border-cyan-300"
           >
             <option value="all">All categories</option>
