@@ -63,7 +63,11 @@ function validateStep(step: WorkoutStep, path: string): WorkoutValidationIssue[]
   }
 
   if (step.type === "repeat") {
-    if (!isFiniteNumber(step.repeatCount) || step.repeatCount < 1) {
+    if (
+      !isFiniteNumber(step.repeatCount) ||
+      !Number.isInteger(step.repeatCount) ||
+      step.repeatCount < 1
+    ) {
       issues.push({
         id: `${step.id}-repeat`,
         severity: "error",

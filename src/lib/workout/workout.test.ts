@@ -70,13 +70,22 @@ describe("workout helpers", () => {
     expect(exportWorkoutToMrc(workout, "high")).toContain("0.000\t90");
   });
 
-  it("rejects invalid zero-duration blocks", () => {
-    const workout = {
+  it("rejects invalid block durations and repeat counts", () => {
+    const zeroDurationWorkout = {
       ...defaultWorkout,
       blocks: [{ ...createBlockFromTemplate("steady"), durationSeconds: 0 }],
     };
+    const fractionalRepeatWorkout = {
+      ...defaultWorkout,
+      blocks: [{ ...defaultWorkout.blocks[1], repeatCount: 2.5 }],
+    };
 
-    expect(validateWorkout(workout).some((issue) => issue.severity === "error")).toBe(true);
+    expect(validateWorkout(zeroDurationWorkout).some((issue) => issue.severity === "error")).toBe(
+      true,
+    );
+    expect(
+      validateWorkout(fractionalRepeatWorkout).some((issue) => issue.severity === "error"),
+    ).toBe(true);
   });
 
   it("moves blocks without losing items", () => {

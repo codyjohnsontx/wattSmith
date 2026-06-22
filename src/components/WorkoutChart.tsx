@@ -71,6 +71,12 @@ interface ChartReferenceLine {
   kind: "zero" | "ftp" | "grid" | "max";
 }
 
+interface ViewBoxTransform {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
 function referenceKindForPercent(percent: number): ChartReferenceLine["kind"] {
   if (percent === 0) return "zero";
   if (percent === 100) return "ftp";
@@ -79,6 +85,25 @@ function referenceKindForPercent(percent: number): ChartReferenceLine["kind"] {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getViewBoxTransform(svgRect: DOMRect): ViewBoxTransform {
+  const scale = Math.min(svgRect.width / chartWidth, svgRect.height / chartHeight) || 1;
+
+  return {
+    scale,
+    offsetX: (svgRect.width - chartWidth * scale) / 2,
+    offsetY: (svgRect.height - chartHeight * scale) / 2,
+  };
+}
+
+function viewBoxPointToClient(svgRect: DOMRect, viewBoxX: number, viewBoxY: number) {
+  const transform = getViewBoxTransform(svgRect);
+
+  return {
+    clientX: svgRect.left + transform.offsetX + viewBoxX * transform.scale,
+    clientY: svgRect.top + transform.offsetY + viewBoxY * transform.scale,
+  };
 }
 
 function getSegmentAtSeconds(
@@ -248,19 +273,27 @@ function ChartTooltip({
 export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const previousWorkoutRef = useRef(workout);
+  const pinnedParentStepIdRef = useRef<string | undefined>(undefined);
   const [hoverState, setHoverState] = useState<HoverState | undefined>();
   const [pinnedSegmentId, setPinnedSegmentId] = useState<string | undefined>();
   const [chartBounds, setChartBounds] = useState<ChartBounds | undefined>();
   const segments = useMemo(() => flattenWorkout(workout), [workout]);
 
   useEffect(() => {
+    const workoutChanged = previousWorkoutRef.current !== workout;
+    previousWorkoutRef.current = workout;
+
+    if (!workoutChanged && pinnedParentStepIdRef.current === selectedStepId) return;
+
     const timeoutId = window.setTimeout(() => {
+      pinnedParentStepIdRef.current = undefined;
       setPinnedSegmentId(undefined);
       setHoverState(undefined);
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [workout]);
+  }, [workout, selectedStepId]);
 
   const totalSeconds = segments.at(-1)?.endSeconds ?? 1;
   const highestWatts = Math.max(
@@ -311,7 +344,8 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
       if (!svg) return undefined;
 
       const rect = svg.getBoundingClientRect();
-      const svgX = ((clientX - rect.left) / rect.width) * chartWidth;
+      const transform = getViewBoxTransform(rect);
+      const svgX = (clientX - rect.left - transform.offsetX) / transform.scale;
       const seconds = ((svgX - margin.left) / innerWidth) * totalSeconds;
       return clamp(seconds, 0, totalSeconds);
     },
@@ -347,6 +381,7 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
       setHoverState(buildHoverState(segment, seconds, event.clientX, event.clientY, pinned));
 
       if (pinned) {
+        pinnedParentStepIdRef.current = segment.parentStepId;
         setPinnedSegmentId(segment.id);
         onSelectStep?.(segment.parentStepId);
       }
@@ -374,16 +409,16 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
       const svgRect = svgRef.current?.getBoundingClientRect();
       const viewBoxX = x(seconds);
       const viewBoxY = y((segment.startWatts + segment.endWatts) / 2);
-      const clientX =
-        event?.clientX ??
-        (svgRect ? svgRect.left + viewBoxX * (svgRect.width / chartWidth) : viewBoxX);
-      const clientY =
-        event?.clientY ??
-        (svgRect ? svgRect.top + viewBoxY * (svgRect.height / chartHeight) : viewBoxY);
+      const fallbackPoint = svgRect
+        ? viewBoxPointToClient(svgRect, viewBoxX, viewBoxY)
+        : { clientX: viewBoxX, clientY: viewBoxY };
+      const clientX = event?.clientX ?? fallbackPoint.clientX;
+      const clientY = event?.clientY ?? fallbackPoint.clientY;
 
       setHoverState(buildHoverState(segment, seconds, clientX, clientY, pinned));
 
       if (pinned) {
+        pinnedParentStepIdRef.current = segment.parentStepId;
         setPinnedSegmentId(segment.id);
         onSelectStep?.(segment.parentStepId);
       }
@@ -396,6 +431,7 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
   }, []);
 
   const clearPinnedTooltip = useCallback(() => {
+    pinnedParentStepIdRef.current = undefined;
     setHoverState(undefined);
     setPinnedSegmentId(undefined);
   }, []);
