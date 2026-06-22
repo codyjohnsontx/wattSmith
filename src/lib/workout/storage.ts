@@ -46,11 +46,13 @@ function isAthleteProfile(value: unknown): value is AthleteProfile {
     experienceLevels.includes(value.experienceLevel) &&
     typeof value.weeklyHours === "number" &&
     Number.isFinite(value.weeklyHours) &&
+    value.weeklyHours >= 0 &&
     isStringArray(value.availableDays) &&
     typeof value.primaryGoal === "string" &&
     (value.targetEventDate === undefined || typeof value.targetEventDate === "string") &&
     typeof value.preferredWorkoutDurationMinutes === "number" &&
     Number.isFinite(value.preferredWorkoutDurationMinutes) &&
+    value.preferredWorkoutDurationMinutes >= 0 &&
     isStringArray(value.constraints) &&
     typeof value.updatedAt === "string"
   );

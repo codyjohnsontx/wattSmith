@@ -11,6 +11,7 @@ import { createBlockFromTemplate } from "@/lib/workout/editor";
 import { clampNumber, createId, percentToWatts } from "@/lib/workout/math";
 import {
   deleteWorkout,
+  defaultProfile,
   loadIntegrationConnections,
   loadProfile,
   loadWorkouts,
@@ -54,7 +55,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("builder");
   const [workout, setWorkout] = useState<Workout>(() => cloneDefaultWorkout());
   const [savedWorkouts, setSavedWorkouts] = useState<Workout[]>([]);
-  const [profile, setProfile] = useState<AthleteProfile>(() => loadProfile());
+  const [profile, setProfile] = useState<AthleteProfile>(defaultProfile);
   const [integrations, setIntegrations] = useState<IntegrationConnection[]>([]);
   const [selectedStepId, setSelectedStepId] = useState<string | undefined>("warmup");
   const [status, setStatus] = useState("Ready");

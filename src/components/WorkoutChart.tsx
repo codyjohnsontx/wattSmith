@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flattenWorkout } from "@/lib/workout/flatten";
 import { formatClock } from "@/lib/workout/math";
 import type { FlattenedSegment, Workout } from "@/lib/workout/types";
@@ -252,6 +252,16 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
   const [pinnedSegmentId, setPinnedSegmentId] = useState<string | undefined>();
   const [chartBounds, setChartBounds] = useState<ChartBounds | undefined>();
   const segments = useMemo(() => flattenWorkout(workout), [workout]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setPinnedSegmentId(undefined);
+      setHoverState(undefined);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [workout]);
+
   const totalSeconds = segments.at(-1)?.endSeconds ?? 1;
   const highestWatts = Math.max(
     1,
@@ -450,7 +460,7 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
         <svg
           ref={svgRef}
           viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-          role="img"
+          role="group"
           aria-label="Power timeline chart. Hover or tap intervals to inspect target watts and FTP percentage."
           className="h-auto min-h-[240px] w-full touch-manipulation"
           onPointerMove={(event) => updateHoverFromPointer(event, false)}
@@ -606,6 +616,7 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
             strokeLinejoin="round"
             strokeWidth="7"
             opacity="0.85"
+            pointerEvents="none"
           />
 
           <path
@@ -615,6 +626,7 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth="4"
+            pointerEvents="none"
           />
 
           {segments.map((segment) => (
@@ -626,6 +638,7 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
               y2={y(segment.endWatts)}
               stroke={segmentColor(segment)}
               strokeLinecap="round"
+              pointerEvents="none"
               strokeWidth={
                 hoverState?.segment.id === segment.id || pinnedSegmentId === segment.id
                   ? 5

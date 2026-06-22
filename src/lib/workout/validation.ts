@@ -1,6 +1,10 @@
 import { getStepTargetMode } from "./flatten";
 import type { Workout, WorkoutCue, WorkoutStep, WorkoutValidationIssue } from "./types";
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 function validateCues(
   cues: WorkoutCue[] | undefined,
   ownerId: string,
@@ -59,7 +63,7 @@ function validateStep(step: WorkoutStep, path: string): WorkoutValidationIssue[]
   }
 
   if (step.type === "repeat") {
-    if (!step.repeatCount || step.repeatCount < 1) {
+    if (!isFiniteNumber(step.repeatCount) || step.repeatCount < 1) {
       issues.push({
         id: `${step.id}-repeat`,
         severity: "error",
@@ -84,7 +88,7 @@ function validateStep(step: WorkoutStep, path: string): WorkoutValidationIssue[]
     return issues;
   }
 
-  if (!step.durationSeconds || step.durationSeconds <= 0) {
+  if (!isFiniteNumber(step.durationSeconds) || step.durationSeconds <= 0) {
     issues.push({
       id: `${step.id}-duration`,
       severity: "error",
@@ -95,7 +99,10 @@ function validateStep(step: WorkoutStep, path: string): WorkoutValidationIssue[]
 
   const mode = getStepTargetMode(step);
 
-  if (mode === "single" && (step.targetPercentFTP === undefined || step.targetPercentFTP < 0)) {
+  if (
+    mode === "single" &&
+    (!isFiniteNumber(step.targetPercentFTP) || step.targetPercentFTP < 0)
+  ) {
     issues.push({
       id: `${step.id}-target`,
       severity: "error",
@@ -106,8 +113,8 @@ function validateStep(step: WorkoutStep, path: string): WorkoutValidationIssue[]
 
   if (
     mode === "ramp" &&
-    (step.startPercentFTP === undefined ||
-      step.endPercentFTP === undefined ||
+    (!isFiniteNumber(step.startPercentFTP) ||
+      !isFiniteNumber(step.endPercentFTP) ||
       step.startPercentFTP < 0 ||
       step.endPercentFTP < 0)
   ) {
@@ -121,8 +128,8 @@ function validateStep(step: WorkoutStep, path: string): WorkoutValidationIssue[]
 
   if (
     mode === "range" &&
-    (step.minPercentFTP === undefined ||
-      step.maxPercentFTP === undefined ||
+    (!isFiniteNumber(step.minPercentFTP) ||
+      !isFiniteNumber(step.maxPercentFTP) ||
       step.minPercentFTP < 0 ||
       step.maxPercentFTP < step.minPercentFTP)
   ) {
