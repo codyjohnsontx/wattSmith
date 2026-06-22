@@ -63,6 +63,23 @@ export const scienceSources: ScienceSource[] = [
     sourceType: "peer-reviewed",
     topics: ["polarized-training", "endurance"],
   },
+  {
+    id: "trainingpeaks-workout-builder-tss",
+    title: "TrainingPeaks Workout Builder",
+    authors: "Dirk Friel / TrainingPeaks",
+    year: 2016,
+    url: "https://www.trainingpeaks.com/learn/articles/introducing-trainingpeaks-workout-builder/",
+    sourceType: "platform-doc",
+    topics: ["tss", "workout-builder", "dynamic-targets"],
+  },
+  {
+    id: "trainerroad-mrc-erg-import",
+    title: "Creating a Workout from an ERG or MRC File",
+    authors: "TrainerRoad Support",
+    url: "https://support.trainerroad.com/hc/en-us/articles/201944204-Creating-a-Workout-from-an-ERG-or-MRC-File",
+    sourceType: "platform-doc",
+    topics: ["export", "mrc", "erg"],
+  },
 ];
 
 export function getScienceSource(id: string) {
