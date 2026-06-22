@@ -2,6 +2,14 @@ export function percentToWatts(ftp: number, percent: number): number {
   return Math.round((ftp * percent) / 100);
 }
 
+export function createId(prefix = "id"): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function secondsToMinutes(seconds: number): number {
   return seconds / 60;
 }
@@ -38,4 +46,12 @@ export function clampNumber(value: number, min: number, max = Number.MAX_SAFE_IN
 
 export function averagePercent(startPercent: number, endPercent: number): number {
   return (startPercent + endPercent) / 2;
+}
+
+export function midpoint(min: number, max: number): number {
+  return (min + max) / 2;
+}
+
+export function roundOne(value: number): number {
+  return Math.round(value * 10) / 10;
 }

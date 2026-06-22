@@ -24,6 +24,13 @@ export const scienceNotes: ScienceNote[] = [
       "Wattsmith groups workout time into broad FTP-based zones so riders can quickly see whether a session is mostly recovery, endurance, threshold, VO2, or higher-intensity work.",
     sourceIds: ["coggan-power-zones"],
   },
+  {
+    id: "load-metrics",
+    title: "How load estimates are treated",
+    body:
+      "IF, TSS, and normalized-power style values are estimates in Wattsmith. They are useful for comparing workouts, but final training decisions should consider recent fatigue, goals, and completed ride data.",
+    sourceIds: ["trainingpeaks-workout-builder-tss", "coggan-power-zones"],
+  },
 ];
 
 export function getScienceNote(id: string) {
