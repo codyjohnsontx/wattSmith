@@ -1,5 +1,6 @@
 import { exportWorkoutToErg } from "@/lib/workout/exportErg";
 import { exportWorkoutToMrc, safeFileName } from "@/lib/workout/exportMrc";
+import { buildExportReadinessChecklist } from "@/lib/workout/exportReadiness";
 import { formatDuration } from "@/lib/workout/math";
 import { calculateWorkoutSummary } from "@/lib/workout/summary";
 import type { ExportRangeStrategy, Workout } from "@/lib/workout/types";
@@ -12,6 +13,27 @@ interface ExportPanelProps {
 
 const trainerRoadInstructions =
   "Download the `.MRC` or `.ERG` file. Open the TrainerRoad Workout Creator on Mac or Windows. Drag the file into the left sidebar. Review the workout, then click Save/Publish. Open the TrainerRoad app and refresh your workout library. The workout should appear under Workouts > Custom.";
+
+const readinessTone = {
+  pass: {
+    chip: "border-emerald-300/40 bg-emerald-300/10 text-emerald-100",
+    label: "Pass",
+    row: "border-emerald-300/20 bg-emerald-300/5",
+    text: "text-emerald-100",
+  },
+  warn: {
+    chip: "border-amber-300/40 bg-amber-300/10 text-amber-100",
+    label: "Review",
+    row: "border-amber-300/25 bg-amber-300/5",
+    text: "text-amber-100",
+  },
+  error: {
+    chip: "border-red-400/40 bg-red-400/10 text-red-100",
+    label: "Blocked",
+    row: "border-red-400/25 bg-red-400/5",
+    text: "text-red-100",
+  },
+};
 
 function downloadTextFile(fileName: string, contents: string) {
   const blob = new Blob([contents], { type: "text/plain;charset=utf-8" });
@@ -28,12 +50,25 @@ export function ExportPanel({ workout }: ExportPanelProps) {
   const [copyError, setCopyError] = useState("");
   const [rangeStrategy, setRangeStrategy] = useState<ExportRangeStrategy>("midpoint");
   const [previewFormat, setPreviewFormat] = useState<"mrc" | "erg">("mrc");
-  const summary = calculateWorkoutSummary(workout);
-  const issues = validateWorkout(workout);
+  const summary = useMemo(() => calculateWorkoutSummary(workout), [workout]);
+  const issues = useMemo(() => validateWorkout(workout), [workout]);
   const hasErrors = issues.some((issue) => issue.severity === "error");
   const baseFileName = safeFileName(workout.name) || "wattsmith_workout";
   const mrc = useMemo(() => exportWorkoutToMrc(workout, rangeStrategy), [workout, rangeStrategy]);
   const erg = useMemo(() => exportWorkoutToErg(workout, rangeStrategy), [workout, rangeStrategy]);
+  const readinessChecklist = useMemo(
+    () =>
+      buildExportReadinessChecklist({
+        workout,
+        rangeStrategy,
+        validationIssues: issues,
+        summary,
+        mrc,
+        erg,
+      }),
+    [workout, rangeStrategy, issues, summary, mrc, erg],
+  );
+  const passedCount = readinessChecklist.filter((item) => item.status === "pass").length;
   const preview = previewFormat === "mrc" ? mrc : erg;
   const plainSummary = `${workout.name}
 FTP: ${workout.ftp}W
@@ -59,22 +94,48 @@ TSS estimate: ${summary.trainingStressScore}`;
         </p>
       </div>
 
-      {issues.length > 0 ? (
-        <div className="mt-4 space-y-2">
-          {issues.map((issue) => (
-            <p
-              key={issue.id}
-              className={`rounded-lg border px-3 py-2 text-sm ${
-                issue.severity === "error"
-                  ? "border-red-400/40 bg-red-400/10 text-red-100"
-                  : "border-amber-300/40 bg-amber-300/10 text-amber-100"
-              }`}
-            >
-              {issue.message}
+      <section className="mt-4 rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-100">Export readiness</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Errors block download. Warnings are review notes.
             </p>
-          ))}
+          </div>
+          <span className="mt-2 inline-flex w-fit rounded-full border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-300 sm:mt-0">
+            {passedCount}/{readinessChecklist.length} checks passed
+          </span>
         </div>
-      ) : null}
+
+        <div className="mt-3 space-y-2">
+          {readinessChecklist.map((item) => {
+            const tone = readinessTone[item.status];
+
+            return (
+              <div key={item.id} className={`rounded-lg border px-3 py-3 ${tone.row}`}>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${tone.chip}`}
+                    >
+                      {tone.label}
+                    </span>
+                    <p className="text-sm font-semibold text-slate-100">{item.label}</p>
+                  </div>
+                  <p className="text-sm leading-6 text-slate-300">{item.message}</p>
+                  {item.details?.length ? (
+                    <ul className={`mt-1 list-disc space-y-1 pl-5 text-sm leading-6 ${tone.text}`}>
+                      {item.details.map((detail, index) => (
+                        <li key={`${item.id}-${index}`}>{detail}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-[220px_1fr]">
         <label>
@@ -128,9 +189,9 @@ TSS estimate: ${summary.trainingStressScore}`;
         {copyError ? <p className="text-sm text-amber-200 sm:col-start-2">{copyError}</p> : null}
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-          <div className="flex items-center justify-between gap-3">
+      <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <div className="min-w-0 rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-sm font-semibold text-slate-100">Export preview</h3>
             <div className="flex rounded-lg border border-slate-700 p-1">
               {(["mrc", "erg"] as const).map((format) => (
@@ -147,18 +208,20 @@ TSS estimate: ${summary.trainingStressScore}`;
               ))}
             </div>
           </div>
-          <pre className="mt-3 max-h-80 overflow-auto rounded-lg bg-slate-950 p-3 font-mono text-xs leading-5 text-slate-300">
+          <pre className="mt-3 max-h-80 w-full max-w-full overflow-auto rounded-lg bg-slate-950 p-3 font-mono text-xs leading-5 text-slate-300">
             {preview}
           </pre>
         </div>
-        <div className="space-y-4">
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+        <div className="min-w-0 space-y-4">
+          <div className="min-w-0 rounded-lg border border-slate-800 bg-slate-950/70 p-4">
             <h3 className="text-sm font-semibold text-slate-100">TrainerRoad import</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-400">{trainerRoadInstructions}</p>
+            <p className="mt-2 break-words text-sm leading-6 text-slate-400">
+              {trainerRoadInstructions}
+            </p>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+          <div className="min-w-0 rounded-lg border border-slate-800 bg-slate-950/70 p-4">
             <h3 className="text-sm font-semibold text-slate-100">Plain-text summary</h3>
-            <pre className="mt-2 whitespace-pre-wrap font-mono text-xs leading-5 text-slate-400">
+            <pre className="mt-2 max-w-full overflow-auto whitespace-pre-wrap font-mono text-xs leading-5 text-slate-400">
               {plainSummary}
             </pre>
           </div>
