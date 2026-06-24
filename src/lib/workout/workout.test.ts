@@ -8,7 +8,9 @@ import { exportWorkoutToMrc } from "./exportMrc";
 import { flattenWorkout } from "./flatten";
 import { percentToWatts } from "./math";
 import { calculateWorkoutSummary } from "./summary";
+import { defaultProfile } from "./storage";
 import { validateWorkout } from "./validation";
+import { getProfileWarnings } from "./warnings";
 import type { Workout } from "./types";
 
 describe("workout helpers", () => {
@@ -99,5 +101,82 @@ describe("workout helpers", () => {
         expect(getScienceSource(sourceId), sourceId).toBeTruthy();
       }
     }
+  });
+
+  it("warns when a workout exceeds the preferred profile duration", () => {
+    const warnings = getProfileWarnings(
+      { ...defaultProfile, preferredWorkoutDurationMinutes: 30 },
+      defaultWorkout,
+    );
+
+    expect(warnings.some((warning) => warning.includes("longer than your preferred 30 minutes"))).toBe(
+      true,
+    );
+  });
+
+  it("warns when a non-elite profile has high above-FTP density", () => {
+    const workout: Workout = {
+      ...defaultWorkout,
+      blocks: [
+        {
+          id: "high",
+          type: "steady",
+          label: "Hard work",
+          targetMode: "single",
+          durationSeconds: 4 * 60,
+          targetPercentFTP: 120,
+        },
+        {
+          id: "recovery",
+          type: "recovery",
+          label: "Recovery",
+          targetMode: "single",
+          durationSeconds: 8 * 60,
+          targetPercentFTP: 50,
+        },
+      ],
+    };
+
+    const warnings = getProfileWarnings(
+      { ...defaultProfile, experienceLevel: "serious", preferredWorkoutDurationMinutes: 90 },
+      workout,
+    );
+
+    expect(warnings).toContain(
+      "This workout has a high share of work above FTP. Consider reducing repeats when fatigued.",
+    );
+  });
+
+  it("does not warn elite profiles for high above-FTP density", () => {
+    const workout: Workout = {
+      ...defaultWorkout,
+      blocks: [
+        {
+          id: "high",
+          type: "steady",
+          label: "Hard work",
+          targetMode: "single",
+          durationSeconds: 4 * 60,
+          targetPercentFTP: 120,
+        },
+        {
+          id: "recovery",
+          type: "recovery",
+          label: "Recovery",
+          targetMode: "single",
+          durationSeconds: 8 * 60,
+          targetPercentFTP: 50,
+        },
+      ],
+    };
+
+    const warnings = getProfileWarnings(
+      { ...defaultProfile, experienceLevel: "elite", preferredWorkoutDurationMinutes: 90 },
+      workout,
+    );
+
+    expect(warnings).not.toContain(
+      "This workout has a high share of work above FTP. Consider reducing repeats when fatigued.",
+    );
   });
 });

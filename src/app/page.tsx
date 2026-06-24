@@ -1,7 +1,7 @@
 "use client";
 
 import { ExportPanel } from "@/components/ExportPanel";
-import { getProfileWarnings, ProfilePanel } from "@/components/ProfilePanel";
+import { ProfilePanel } from "@/components/ProfilePanel";
 import { WorkoutChart } from "@/components/WorkoutChart";
 import { WorkoutEditor } from "@/components/WorkoutEditor";
 import { WorkoutLibrary } from "@/components/WorkoutLibrary";
@@ -19,6 +19,7 @@ import {
   saveWorkout,
 } from "@/lib/workout/storage";
 import type { AthleteProfile, IntegrationConnection, Workout } from "@/lib/workout/types";
+import { getProfileWarnings } from "@/lib/workout/warnings";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type WorkspaceTab = "builder" | "library" | "profile" | "export";
@@ -276,6 +277,7 @@ export default function Home() {
           <WorkoutLibrary
             workouts={savedWorkouts}
             activeFtp={workout.ftp}
+            profile={profile}
             onLoad={(nextWorkout) => {
               setWorkout(nextWorkout);
               setSelectedStepId(nextWorkout.blocks[0]?.id);

@@ -1,5 +1,4 @@
-import { formatDuration } from "@/lib/workout/math";
-import { calculateWorkoutSummary } from "@/lib/workout/summary";
+import { getProfileWarnings } from "@/lib/workout/warnings";
 import type { AthleteProfile, IntegrationConnection, Workout } from "@/lib/workout/types";
 
 interface ProfilePanelProps {
@@ -13,24 +12,6 @@ const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function inputClassName() {
   return "mt-1 h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300";
-}
-
-export function getProfileWarnings(profile: AthleteProfile, workout: Workout): string[] {
-  const summary = calculateWorkoutSummary(workout);
-  const warnings: string[] = [];
-
-  if (summary.totalDurationSeconds / 60 > profile.preferredWorkoutDurationMinutes) {
-    warnings.push(
-      `This workout is ${formatDuration(summary.totalDurationSeconds)}, longer than your preferred ${profile.preferredWorkoutDurationMinutes} minutes.`,
-    );
-  }
-
-  const intensityDensity = summary.aboveThresholdSeconds / Math.max(1, summary.totalDurationSeconds);
-  if (intensityDensity > 0.22 && profile.experienceLevel !== "elite") {
-    warnings.push("This workout has a high share of work above FTP. Consider reducing repeats when fatigued.");
-  }
-
-  return warnings;
 }
 
 export function ProfilePanel({ profile, workout, integrations, onChange }: ProfilePanelProps) {
