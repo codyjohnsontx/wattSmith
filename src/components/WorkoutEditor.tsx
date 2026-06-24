@@ -14,7 +14,12 @@ import type { TargetMode, Workout, WorkoutCue, WorkoutStep } from "@/lib/workout
 interface WorkoutEditorProps {
   workout: Workout;
   selectedStepId?: string;
+  collapsedStepIds: Set<string>;
   onSelectStep: (stepId?: string) => void;
+  onToggleCollapsedStep: (stepId: string) => void;
+  onExpandAllSteps: () => void;
+  onCollapseAllSteps: () => void;
+  onPruneCollapsedSteps: (stepIds: string[]) => void;
   onChange: (workout: Workout) => void;
 }
 
@@ -96,6 +101,20 @@ function estimateStepWatts(ftp: number, step: WorkoutStep): string {
   return `${percentToWatts(ftp, step.targetPercentFTP ?? 0)}W`;
 }
 
+function getAllStepIds(steps: WorkoutStep[]): string[] {
+  return steps.flatMap((step) => [step.id, ...getAllStepIds(step.children ?? [])]);
+}
+
+function getRemovedStepIds(step: WorkoutStep): string[] {
+  return [step.id, ...getAllStepIds(step.children ?? [])];
+}
+
+function stepIncludesId(step: WorkoutStep, stepId?: string): boolean {
+  if (!stepId) return false;
+  if (step.id === stepId) return true;
+  return step.children?.some((child) => stepIncludesId(child, stepId)) ?? false;
+}
+
 function StepControls({
   canMoveUp,
   canMoveDown,
@@ -115,24 +134,45 @@ function StepControls({
 }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(6.75rem,1fr))] gap-2">
-      <button type="button" disabled={!canMoveUp} onClick={onMoveUp} className={buttonClassName()}>
+      <button
+        type="button"
+        disabled={!canMoveUp}
+        onClick={(event) => {
+          event.stopPropagation();
+          onMoveUp();
+        }}
+        className={buttonClassName()}
+      >
         Up
       </button>
       <button
         type="button"
         disabled={!canMoveDown}
-        onClick={onMoveDown}
+        onClick={(event) => {
+          event.stopPropagation();
+          onMoveDown();
+        }}
         className={buttonClassName()}
       >
         Down
       </button>
-      <button type="button" onClick={onDuplicate} className={buttonClassName()}>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onDuplicate();
+        }}
+        className={buttonClassName()}
+      >
         Duplicate
       </button>
       <button
         type="button"
         disabled={!canDelete}
-        onClick={onDelete}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete();
+        }}
         className="min-w-0 truncate rounded-md border border-red-400/40 px-2.5 py-1.5 text-xs font-semibold text-red-200 transition hover:border-red-300 disabled:cursor-not-allowed disabled:opacity-40"
       >
         Delete
@@ -149,7 +189,10 @@ function StepEditor({
   siblingCount,
   selected,
   selectedStepId,
+  collapsedStepIds,
   onSelect,
+  onToggleCollapsedStep,
+  onPruneCollapsedSteps,
   onChange,
   onMove,
   onDuplicate,
@@ -162,7 +205,10 @@ function StepEditor({
   siblingCount: number;
   selected: boolean;
   selectedStepId?: string;
-  onSelect: (stepId: string) => void;
+  collapsedStepIds: Set<string>;
+  onSelect: (stepId?: string) => void;
+  onToggleCollapsedStep: (stepId: string) => void;
+  onPruneCollapsedSteps: (stepIds: string[]) => void;
   onChange: (step: WorkoutStep) => void;
   onMove: (fromIndex: number, toIndex: number) => void;
   onDuplicate: (step: WorkoutStep, index: number) => void;
@@ -174,6 +220,8 @@ function StepEditor({
   const useMinutes = depth === 0 && !isRepeat;
   const durationValue = useMinutes ? Number((durationSeconds / 60).toFixed(2)) : durationSeconds;
   const durationSuffix = useMinutes ? "min" : "sec";
+  const collapsed = collapsedStepIds.has(step.id);
+  const childCount = step.children?.length ?? 0;
 
   const updateTargetMode = (mode: TargetMode) => {
     if (mode === "single") {
@@ -238,19 +286,38 @@ function StepEditor({
       }}
     >
       <div className="grid gap-3">
-        <div className="min-w-0">
-          <input
-            value={step.label}
-            onChange={(event) => onChange({ ...step, label: event.target.value })}
-            className="w-full truncate bg-transparent text-base font-semibold text-slate-50 outline-none"
-            aria-label="Step label"
-          />
-          <p className="mt-1 break-words text-xs uppercase tracking-[0.16em] text-slate-500">
-            <span>{step.type}</span>
-            {isRepeat && step.repeatCount ? <span> · {step.repeatCount} repeats</span> : null}
-            {!isRepeat ? <span> · {formatDuration(durationSeconds)}</span> : null}
-            <span> · {estimateStepWatts(ftp, step)}</span>
-          </p>
+        <div className="flex flex-wrap items-start gap-2">
+          <button
+            type="button"
+            aria-label={`${collapsed ? "Expand" : "Collapse"} ${step.label}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleCollapsedStep(step.id);
+            }}
+            className={buttonClassName()}
+          >
+            {collapsed ? "Expand" : "Collapse"}
+          </button>
+          <div className="min-w-0 flex-1">
+            <input
+              value={step.label}
+              onChange={(event) => onChange({ ...step, label: event.target.value })}
+              className="w-full truncate bg-transparent text-base font-semibold text-slate-50 outline-none"
+              aria-label="Step label"
+            />
+            <p className="mt-1 break-words text-xs uppercase tracking-[0.16em] text-slate-500">
+              <span>{step.type}</span>
+              {isRepeat && step.repeatCount ? <span> · {step.repeatCount} repeats</span> : null}
+              {!isRepeat ? <span> · {formatDuration(durationSeconds)}</span> : null}
+              <span> · {estimateStepWatts(ftp, step)}</span>
+              {isRepeat && childCount > 0 ? (
+                <span>
+                  {" "}
+                  · {childCount} {childCount === 1 ? "child" : "children"}
+                </span>
+              ) : null}
+            </p>
+          </div>
         </div>
 
         <StepControls
@@ -260,99 +327,105 @@ function StepEditor({
           onMoveUp={() => onMove(index, index - 1)}
           onMoveDown={() => onMove(index, index + 1)}
           onDuplicate={() => onDuplicate(step, index)}
-          onDelete={() => onDelete(step.id)}
+          onDelete={() => {
+            onPruneCollapsedSteps(getRemovedStepIds(step));
+            if (stepIncludesId(step, selectedStepId)) onSelect(undefined);
+            onDelete(step.id);
+          }}
         />
       </div>
 
-      <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))] gap-3">
-        {isRepeat ? (
-          <NumberField
-            label="Repeat count"
-            min={1}
-            value={step.repeatCount ?? 1}
-            onChange={(value) => onChange({ ...step, repeatCount: Math.round(value) })}
-          />
-        ) : (
-          <NumberField
-            label="Duration"
-            min={useMinutes ? 0.25 : 1}
-            step={useMinutes ? 0.25 : 1}
-            suffix={durationSuffix}
-            value={durationValue}
-            onChange={(value) =>
-              onChange({
-                ...step,
-                durationSeconds: Math.round(useMinutes ? value * 60 : value),
-              })
-            }
-          />
-        )}
-
-        {!isRepeat ? (
-          <label className="block">
-            <span className="text-xs font-medium text-slate-400">Target mode</span>
-            <select
-              value={targetMode}
-              onChange={(event) => updateTargetMode(event.target.value as TargetMode)}
-              className={inputClassName()}
-            >
-              <option value="single">Single target</option>
-              <option value="range">Target range</option>
-              <option value="ramp">Ramp</option>
-            </select>
-          </label>
-        ) : null}
-
-        {!isRepeat && targetMode === "single" ? (
-          <NumberField
-            label="Target"
-            min={0}
-            suffix="%"
-            value={step.targetPercentFTP ?? 0}
-            onChange={(value) => onChange({ ...step, targetPercentFTP: value })}
-          />
-        ) : null}
-
-        {!isRepeat && targetMode === "range" ? (
-          <>
+      {!collapsed ? (
+        <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))] gap-3">
+          {isRepeat ? (
             <NumberField
-              label="Low"
+              label="Repeat count"
+              min={1}
+              value={step.repeatCount ?? 1}
+              onChange={(value) => onChange({ ...step, repeatCount: Math.round(value) })}
+            />
+          ) : (
+            <NumberField
+              label="Duration"
+              min={useMinutes ? 0.25 : 1}
+              step={useMinutes ? 0.25 : 1}
+              suffix={durationSuffix}
+              value={durationValue}
+              onChange={(value) =>
+                onChange({
+                  ...step,
+                  durationSeconds: Math.round(useMinutes ? value * 60 : value),
+                })
+              }
+            />
+          )}
+
+          {!isRepeat ? (
+            <label className="block">
+              <span className="text-xs font-medium text-slate-400">Target mode</span>
+              <select
+                value={targetMode}
+                onChange={(event) => updateTargetMode(event.target.value as TargetMode)}
+                className={inputClassName()}
+              >
+                <option value="single">Single target</option>
+                <option value="range">Target range</option>
+                <option value="ramp">Ramp</option>
+              </select>
+            </label>
+          ) : null}
+
+          {!isRepeat && targetMode === "single" ? (
+            <NumberField
+              label="Target"
               min={0}
               suffix="%"
-              value={step.minPercentFTP ?? 0}
-              onChange={(value) => onChange({ ...step, minPercentFTP: value })}
+              value={step.targetPercentFTP ?? 0}
+              onChange={(value) => onChange({ ...step, targetPercentFTP: value })}
             />
-            <NumberField
-              label="High"
-              min={0}
-              suffix="%"
-              value={step.maxPercentFTP ?? 0}
-              onChange={(value) => onChange({ ...step, maxPercentFTP: value })}
-            />
-          </>
-        ) : null}
+          ) : null}
 
-        {!isRepeat && targetMode === "ramp" ? (
-          <>
-            <NumberField
-              label="Start"
-              min={0}
-              suffix="%"
-              value={step.startPercentFTP ?? 0}
-              onChange={(value) => onChange({ ...step, startPercentFTP: value })}
-            />
-            <NumberField
-              label="End"
-              min={0}
-              suffix="%"
-              value={step.endPercentFTP ?? 0}
-              onChange={(value) => onChange({ ...step, endPercentFTP: value })}
-            />
-          </>
-        ) : null}
-      </div>
+          {!isRepeat && targetMode === "range" ? (
+            <>
+              <NumberField
+                label="Low"
+                min={0}
+                suffix="%"
+                value={step.minPercentFTP ?? 0}
+                onChange={(value) => onChange({ ...step, minPercentFTP: value })}
+              />
+              <NumberField
+                label="High"
+                min={0}
+                suffix="%"
+                value={step.maxPercentFTP ?? 0}
+                onChange={(value) => onChange({ ...step, maxPercentFTP: value })}
+              />
+            </>
+          ) : null}
 
-      {step.children ? (
+          {!isRepeat && targetMode === "ramp" ? (
+            <>
+              <NumberField
+                label="Start"
+                min={0}
+                suffix="%"
+                value={step.startPercentFTP ?? 0}
+                onChange={(value) => onChange({ ...step, startPercentFTP: value })}
+              />
+              <NumberField
+                label="End"
+                min={0}
+                suffix="%"
+                value={step.endPercentFTP ?? 0}
+                onChange={(value) => onChange({ ...step, endPercentFTP: value })}
+              />
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!collapsed && step.children ? (
         <div className="mt-4 space-y-3 border-l border-slate-800 pl-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -382,7 +455,10 @@ function StepEditor({
               siblingCount={step.children?.length ?? 0}
               selected={child.id === selectedStepId}
               selectedStepId={selectedStepId}
+              collapsedStepIds={collapsedStepIds}
               onSelect={onSelect}
+              onToggleCollapsedStep={onToggleCollapsedStep}
+              onPruneCollapsedSteps={onPruneCollapsedSteps}
               onChange={(updatedChild) =>
                 onChange({
                   ...step,
@@ -512,7 +588,12 @@ function CueEditor({
 export function WorkoutEditor({
   workout,
   selectedStepId,
+  collapsedStepIds,
   onSelectStep,
+  onToggleCollapsedStep,
+  onExpandAllSteps,
+  onCollapseAllSteps,
+  onPruneCollapsedSteps,
   onChange,
 }: WorkoutEditorProps) {
   const selectedStep = findStepById(workout.blocks, selectedStepId);
@@ -577,6 +658,20 @@ export function WorkoutEditor({
       </div>
 
       <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+            Workout blocks
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={onExpandAllSteps} className={buttonClassName()}>
+              Expand all
+            </button>
+            <button type="button" onClick={onCollapseAllSteps} className={buttonClassName()}>
+              Collapse all
+            </button>
+          </div>
+        </div>
+
         {workout.blocks.map((step, index) => (
           <StepEditor
             key={step.id}
@@ -587,7 +682,10 @@ export function WorkoutEditor({
             siblingCount={workout.blocks.length}
             selected={selectedStep?.id === step.id || selectedStepId === step.id}
             selectedStepId={selectedStepId}
+            collapsedStepIds={collapsedStepIds}
             onSelect={onSelectStep}
+            onToggleCollapsedStep={onToggleCollapsedStep}
+            onPruneCollapsedSteps={onPruneCollapsedSteps}
             onChange={(updatedStep) =>
               updateWorkout({
                 blocks: updateStepById(workout.blocks, updatedStep.id, () => updatedStep),

@@ -18,7 +18,12 @@ import {
   saveProfile,
   saveWorkout,
 } from "@/lib/workout/storage";
-import type { AthleteProfile, IntegrationConnection, Workout } from "@/lib/workout/types";
+import type {
+  AthleteProfile,
+  IntegrationConnection,
+  Workout,
+  WorkoutStep,
+} from "@/lib/workout/types";
 import { getProfileWarnings } from "@/lib/workout/warnings";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -30,6 +35,10 @@ const tabs: { id: WorkspaceTab; label: string }[] = [
   { id: "profile", label: "Profile" },
   { id: "export", label: "Export" },
 ];
+
+function getAllStepIds(steps: WorkoutStep[]): string[] {
+  return steps.flatMap((step) => [step.id, ...getAllStepIds(step.children ?? [])]);
+}
 
 function createBlankWorkout(ftp: number): Workout {
   const timestamp = new Date().toISOString();
@@ -59,6 +68,7 @@ export default function Home() {
   const [profile, setProfile] = useState<AthleteProfile>(defaultProfile);
   const [integrations, setIntegrations] = useState<IntegrationConnection[]>([]);
   const [selectedStepId, setSelectedStepId] = useState<string | undefined>("warmup");
+  const [collapsedStepIds, setCollapsedStepIds] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState("Ready");
   const statusTimeoutRef = useRef<number | undefined>(undefined);
 
@@ -73,9 +83,11 @@ export default function Home() {
       if (storedWorkouts[0]) {
         setWorkout(storedWorkouts[0]);
         setSelectedStepId(undefined);
+        setCollapsedStepIds(new Set());
       } else {
         setWorkout({ ...cloneDefaultWorkout(), ftp: storedProfile.ftp });
         setSelectedStepId(undefined);
+        setCollapsedStepIds(new Set());
       }
     }, 0);
 
@@ -117,6 +129,33 @@ export default function Home() {
     });
   };
 
+  const resetCollapsedSteps = () => setCollapsedStepIds(new Set());
+
+  const toggleCollapsedStep = (stepId: string) => {
+    setCollapsedStepIds((current) => {
+      const next = new Set(current);
+      if (next.has(stepId)) next.delete(stepId);
+      else next.add(stepId);
+      return next;
+    });
+  };
+
+  const expandAllSteps = () => {
+    setCollapsedStepIds(new Set());
+  };
+
+  const collapseAllSteps = () => {
+    setCollapsedStepIds(new Set(getAllStepIds(workout.blocks)));
+  };
+
+  const pruneCollapsedSteps = (stepIds: string[]) => {
+    setCollapsedStepIds((current) => {
+      const next = new Set(current);
+      stepIds.forEach((stepId) => next.delete(stepId));
+      return next;
+    });
+  };
+
   const handleSaveWorkout = (workoutToSave = workout) => {
     const timestamp = new Date().toISOString();
     const nextWorkout = {
@@ -138,6 +177,7 @@ export default function Home() {
       const nextWorkout = nextSavedWorkouts[0] ?? createBlankWorkout(profile.ftp);
       setWorkout(nextWorkout);
       setSelectedStepId(undefined);
+      resetCollapsedSteps();
     }
     flashStatus("Deleted workout");
   };
@@ -224,6 +264,7 @@ export default function Home() {
                   const nextWorkout = createBlankWorkout(profile.ftp);
                   setWorkout(nextWorkout);
                   setSelectedStepId(nextWorkout.blocks[0]?.id);
+                  resetCollapsedSteps();
                   setActiveTab("builder");
                   flashStatus("Started blank workout");
                 }}
@@ -244,6 +285,7 @@ export default function Home() {
                   const starter = { ...cloneDefaultWorkout(), ftp: profile.ftp };
                   setWorkout(starter);
                   setSelectedStepId(starter.blocks[0]?.id);
+                  resetCollapsedSteps();
                   flashStatus("Reset to starter");
                 }}
                 className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-cyan-300"
@@ -259,7 +301,12 @@ export default function Home() {
             <WorkoutEditor
               workout={workout}
               selectedStepId={selectedStepId}
+              collapsedStepIds={collapsedStepIds}
               onSelectStep={setSelectedStepId}
+              onToggleCollapsedStep={toggleCollapsedStep}
+              onExpandAllSteps={expandAllSteps}
+              onCollapseAllSteps={collapseAllSteps}
+              onPruneCollapsedSteps={pruneCollapsedSteps}
               onChange={updateWorkout}
             />
             <div className="space-y-6">
@@ -281,6 +328,7 @@ export default function Home() {
             onLoad={(nextWorkout) => {
               setWorkout(nextWorkout);
               setSelectedStepId(nextWorkout.blocks[0]?.id);
+              resetCollapsedSteps();
               setActiveTab("builder");
               flashStatus("Loaded workout");
             }}
