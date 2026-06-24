@@ -28,6 +28,17 @@ function Metric({ label, value, hint }: { label: string; value: string; hint?: s
   );
 }
 
+const focusableSelector = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+type FocusableElement = HTMLElement | SVGElement;
+
 export function TemplatePreviewModal({
   template,
   workout,
@@ -37,6 +48,7 @@ export function TemplatePreviewModal({
 }: TemplatePreviewModalProps) {
   const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogPanelRef = useRef<HTMLDivElement>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | undefined>(workout.blocks[0]?.id);
   const summary = useMemo(() => calculateWorkoutSummary(workout), [workout]);
   const warnings = useMemo(() => getProfileWarnings(profile, workout), [profile, workout]);
@@ -50,8 +62,52 @@ export function TemplatePreviewModal({
   }, []);
 
   useEffect(() => {
+    const getFocusableElements = () =>
+      Array.from(
+        dialogPanelRef.current?.querySelectorAll<FocusableElement>(focusableSelector) ?? [],
+      ).filter((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 || rect.height > 0;
+      });
+
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const focusableElements = getFocusableElements();
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements.at(-1);
+
+      if (!firstElement || !lastElement) {
+        event.preventDefault();
+        dialogPanelRef.current?.focus();
+        return;
+      }
+
+      const activeElement = document.activeElement;
+      const focusIsInsideDialog =
+        activeElement instanceof Element && dialogPanelRef.current?.contains(activeElement);
+
+      if (!focusIsInsideDialog) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+
+      if (event.shiftKey && activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+
+      if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -70,6 +126,8 @@ export function TemplatePreviewModal({
     >
       <div className="mx-auto flex min-h-full max-w-6xl items-center">
         <div
+          ref={dialogPanelRef}
+          tabIndex={-1}
           className="w-full rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-2xl shadow-black/50 sm:p-5"
           onPointerDown={(event) => event.stopPropagation()}
         >
