@@ -2,12 +2,14 @@ import { duplicateWorkout } from "@/lib/workout/editor";
 import { formatDuration } from "@/lib/workout/math";
 import { calculateWorkoutSummary } from "@/lib/workout/summary";
 import { cloneTemplateWorkout, workoutCategories, workoutTemplates } from "@/lib/workout/templates";
-import type { Workout, WorkoutCategory } from "@/lib/workout/types";
+import type { AthleteProfile, Workout, WorkoutCategory, WorkoutTemplate } from "@/lib/workout/types";
 import { useMemo, useState } from "react";
+import { TemplatePreviewModal } from "./TemplatePreviewModal";
 
 interface WorkoutLibraryProps {
   workouts: Workout[];
   activeFtp: number;
+  profile: AthleteProfile;
   onLoad: (workout: Workout) => void;
   onSaveWorkout: (workout: Workout) => void;
   onDeleteWorkout: (id: string) => void;
@@ -82,12 +84,14 @@ function WorkoutRow({
 export function WorkoutLibrary({
   workouts,
   activeFtp,
+  profile,
   onLoad,
   onSaveWorkout,
   onDeleteWorkout,
 }: WorkoutLibraryProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"all" | WorkoutCategory>("all");
+  const [previewTemplate, setPreviewTemplate] = useState<WorkoutTemplate | undefined>();
 
   const filteredWorkouts = useMemo(
     () =>
@@ -112,6 +116,20 @@ export function WorkoutLibrary({
       }),
     [query, category],
   );
+
+  const previewWorkout = useMemo(() => {
+    if (!previewTemplate) return undefined;
+
+    return {
+      ...structuredClone(previewTemplate.defaultWorkout),
+      ftp: activeFtp,
+      rationale: previewTemplate.rationale,
+    };
+  }, [previewTemplate, activeFtp]);
+
+  const handleUseTemplate = (template: WorkoutTemplate) => {
+    onLoad(cloneTemplateWorkout(template, activeFtp));
+  };
 
   return (
     <section className="space-y-5">
@@ -193,18 +211,40 @@ export function WorkoutLibrary({
                 <p className="mt-3 text-sm leading-6 text-slate-300">
                   {template.rationale.summary}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => onLoad(cloneTemplateWorkout(template, activeFtp))}
-                  className="mt-4 rounded-lg bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950"
-                >
-                  Use template
-                </button>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTemplate(template)}
+                    className="rounded-lg bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-200"
+                  >
+                    Preview
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleUseTemplate(template)}
+                    className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-cyan-300"
+                  >
+                    Use template
+                  </button>
+                </div>
               </article>
             );
           })}
         </section>
       </div>
+
+      {previewTemplate && previewWorkout ? (
+        <TemplatePreviewModal
+          template={previewTemplate}
+          workout={previewWorkout}
+          profile={profile}
+          onClose={() => setPreviewTemplate(undefined)}
+          onUseTemplate={() => {
+            handleUseTemplate(previewTemplate);
+            setPreviewTemplate(undefined);
+          }}
+        />
+      ) : null}
     </section>
   );
 }
