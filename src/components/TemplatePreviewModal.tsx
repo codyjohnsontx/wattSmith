@@ -58,7 +58,14 @@ export function TemplatePreviewModal({
   );
 
   useEffect(() => {
+    const previouslyFocusedElement = document.activeElement;
     closeButtonRef.current?.focus();
+
+    return () => {
+      if (previouslyFocusedElement instanceof HTMLElement && previouslyFocusedElement.isConnected) {
+        previouslyFocusedElement.focus();
+      }
+    };
   }, []);
 
   useEffect(() => {
