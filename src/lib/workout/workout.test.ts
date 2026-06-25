@@ -5,13 +5,38 @@ import { defaultWorkout } from "./defaultWorkout";
 import { createBlockFromTemplate, moveItem } from "./editor";
 import { exportWorkoutToErg } from "./exportErg";
 import { exportWorkoutToMrc } from "./exportMrc";
+import {
+  buildExportReadinessChecklist,
+  type ExportReadinessItem,
+} from "./exportReadiness";
 import { flattenWorkout } from "./flatten";
 import { percentToWatts } from "./math";
 import { calculateWorkoutSummary } from "./summary";
 import { defaultProfile } from "./storage";
 import { validateWorkout } from "./validation";
 import { getProfileWarnings } from "./warnings";
-import type { Workout } from "./types";
+import type { ExportRangeStrategy, Workout } from "./types";
+
+function buildChecklist(
+  workout: Workout,
+  rangeStrategy: ExportRangeStrategy = "midpoint",
+  overrides: Partial<{ mrc: string; erg: string }> = {},
+): ExportReadinessItem[] {
+  return buildExportReadinessChecklist({
+    workout,
+    rangeStrategy,
+    validationIssues: validateWorkout(workout),
+    summary: calculateWorkoutSummary(workout),
+    mrc: overrides.mrc ?? exportWorkoutToMrc(workout, rangeStrategy),
+    erg: overrides.erg ?? exportWorkoutToErg(workout, rangeStrategy),
+  });
+}
+
+function readinessItem(items: ExportReadinessItem[], id: string): ExportReadinessItem {
+  const item = items.find((candidate) => candidate.id === id);
+  expect(item).toBeDefined();
+  return item as ExportReadinessItem;
+}
 
 describe("workout helpers", () => {
   it("calculates watts from FTP percentages", () => {
@@ -70,6 +95,109 @@ describe("workout helpers", () => {
     expect(exportWorkoutToMrc(workout, "low")).toContain("0.000\t80");
     expect(exportWorkoutToMrc(workout, "midpoint")).toContain("0.000\t85");
     expect(exportWorkoutToMrc(workout, "high")).toContain("0.000\t90");
+  });
+
+  it("marks the default workout as export-ready", () => {
+    const checklist = buildChecklist(defaultWorkout);
+
+    expect(checklist.some((item) => item.status === "error")).toBe(false);
+    for (const id of ["validation", "ftp", "timeline", "targets", "preview", "filename"]) {
+      expect(readinessItem(checklist, id).status).toBe("pass");
+    }
+    expect(readinessItem(checklist, "range-strategy").status).toBe("pass");
+  });
+
+  it("surfaces validation errors as blocked checklist details", () => {
+    const workout = { ...defaultWorkout, name: "" };
+    const checklist = buildChecklist(workout);
+    const validation = readinessItem(checklist, "validation");
+
+    expect(validation.status).toBe("error");
+    expect(validation.details).toContain("Workout needs a name.");
+  });
+
+  it("keeps validation warnings review-only", () => {
+    const workout: Workout = {
+      ...defaultWorkout,
+      blocks: [{ ...defaultWorkout.blocks[0], id: "blank-label", label: "" }],
+    };
+    const checklist = buildChecklist(workout);
+
+    expect(readinessItem(checklist, "validation").status).toBe("warn");
+    expect(checklist.some((item) => item.status === "error")).toBe(false);
+  });
+
+  it("creates an FTP readiness error when FTP is invalid", () => {
+    const checklist = buildChecklist({ ...defaultWorkout, ftp: 0 });
+
+    expect(readinessItem(checklist, "ftp").status).toBe("error");
+  });
+
+  it("creates a timeline warning for workouts over four hours", () => {
+    const workout: Workout = {
+      ...defaultWorkout,
+      blocks: [
+        {
+          id: "long",
+          type: "steady",
+          label: "Long endurance",
+          targetMode: "single",
+          durationSeconds: 4 * 60 * 60 + 60,
+          targetPercentFTP: 65,
+        },
+      ],
+    };
+    const checklist = buildChecklist(workout);
+
+    expect(readinessItem(checklist, "timeline").status).toBe("warn");
+  });
+
+  it("creates a target warning for targets over 200 percent FTP", () => {
+    const workout: Workout = {
+      ...defaultWorkout,
+      blocks: [
+        {
+          id: "high-target",
+          type: "steady",
+          label: "Hard surge",
+          targetMode: "single",
+          durationSeconds: 60,
+          targetPercentFTP: 225,
+        },
+      ],
+    };
+    const checklist = buildChecklist(workout);
+
+    expect(readinessItem(checklist, "targets").status).toBe("warn");
+  });
+
+  it("updates the range strategy readiness message", () => {
+    const workout: Workout = {
+      ...defaultWorkout,
+      blocks: [
+        {
+          id: "range",
+          type: "steady",
+          label: "Range",
+          targetMode: "range",
+          durationSeconds: 60,
+          minPercentFTP: 80,
+          maxPercentFTP: 90,
+        },
+      ],
+    };
+
+    for (const strategy of ["low", "midpoint", "high"] as const) {
+      expect(readinessItem(buildChecklist(workout, strategy), "range-strategy").message).toContain(
+        strategy,
+      );
+    }
+  });
+
+  it("creates a preview readiness error when a preview is malformed", () => {
+    const checklist = buildChecklist(defaultWorkout, "midpoint", { mrc: "" });
+
+    expect(readinessItem(checklist, "preview").status).toBe("error");
   });
 
   it("rejects invalid block durations and repeat counts", () => {
