@@ -99,7 +99,7 @@ TSS estimate: ${summary.trainingStressScore}`;
           <div>
             <h3 className="text-sm font-semibold text-slate-100">Export readiness</h3>
             <p className="mt-1 text-xs text-slate-500">
-              Errors block download. Warnings are review notes.
+              Validation errors block download. Warnings are review notes.
             </p>
           </div>
           <span className="mt-2 inline-flex w-fit rounded-full border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-300 sm:mt-0">
