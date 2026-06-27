@@ -189,6 +189,7 @@ export default function Home() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isTextEditingTarget(event.target)) return;
+      if (activeTab !== "builder") return;
 
       const key = event.key.toLowerCase();
       const usesModifier = event.metaKey || event.ctrlKey;
@@ -211,7 +212,7 @@ export default function Home() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canRedoWorkout, canUndoWorkout, redoWorkout, undoWorkout]);
+  }, [activeTab, canRedoWorkout, canUndoWorkout, redoWorkout, undoWorkout]);
 
   const ftpExamples = useMemo(
     () => [

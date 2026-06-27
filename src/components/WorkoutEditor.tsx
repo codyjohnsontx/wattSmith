@@ -390,10 +390,7 @@ function StepEditor({
         {collapsed ? (
           <IssueList issues={collapsedIssues} compact />
         ) : (
-          <>
-            <IssueList issues={stepIssues} compact />
-            {isRepeat ? <IssueList issues={descendantIssues} compact /> : null}
-          </>
+          <IssueList issues={stepIssues} compact />
         )}
       </div>
 
