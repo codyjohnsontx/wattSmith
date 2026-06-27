@@ -9,7 +9,13 @@ import {
   type BlockTemplateId,
 } from "@/lib/workout/editor";
 import { clampNumber, createId, formatDuration, percentToWatts } from "@/lib/workout/math";
-import type { TargetMode, Workout, WorkoutCue, WorkoutStep } from "@/lib/workout/types";
+import type {
+  TargetMode,
+  Workout,
+  WorkoutCue,
+  WorkoutStep,
+  WorkoutValidationIssue,
+} from "@/lib/workout/types";
 
 interface WorkoutEditorProps {
   workout: Workout;
@@ -21,6 +27,7 @@ interface WorkoutEditorProps {
   onCollapseAllSteps: () => void;
   onPruneCollapsedSteps: (stepIds: string[]) => void;
   onChange: (workout: Workout) => void;
+  validationIssues: WorkoutValidationIssue[];
 }
 
 const blockTemplateIds: BlockTemplateId[] = [
@@ -42,6 +49,37 @@ function buttonClassName(active = false) {
   return active
     ? "min-w-0 truncate rounded-md border border-cyan-300 bg-cyan-300/10 px-2.5 py-1.5 text-xs font-semibold text-cyan-100"
     : "min-w-0 truncate rounded-md border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-cyan-300 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40";
+}
+
+function issueClassName(severity: WorkoutValidationIssue["severity"]) {
+  return severity === "error"
+    ? "border-red-400/35 bg-red-400/10 text-red-100"
+    : "border-amber-300/35 bg-amber-300/10 text-amber-100";
+}
+
+function IssueList({
+  issues,
+  compact = false,
+}: {
+  issues: WorkoutValidationIssue[];
+  compact?: boolean;
+}) {
+  if (!issues.length) return null;
+
+  return (
+    <div className={`grid gap-1.5 ${compact ? "" : "mt-3"}`}>
+      {issues.map((issue) => (
+        <p
+          key={issue.id}
+          className={`rounded-md border px-2.5 ${
+            compact ? "py-1 text-xs leading-5" : "py-2 text-sm leading-6"
+          } ${issueClassName(issue.severity)}`}
+        >
+          {issue.message}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 function NumberField({
@@ -105,8 +143,16 @@ function getAllStepIds(steps: WorkoutStep[]): string[] {
   return steps.flatMap((step) => [step.id, ...getAllStepIds(step.children ?? [])]);
 }
 
+function getDescendantStepIds(step: WorkoutStep): string[] {
+  return getAllStepIds(step.children ?? []);
+}
+
 function getRemovedStepIds(step: WorkoutStep): string[] {
   return [step.id, ...getAllStepIds(step.children ?? [])];
+}
+
+function isCueValidationIssue(issue: WorkoutValidationIssue): boolean {
+  return issue.id.includes("-cue-");
 }
 
 function stepIncludesId(step: WorkoutStep, stepId?: string): boolean {
@@ -197,6 +243,7 @@ function StepEditor({
   onMove,
   onDuplicate,
   onDelete,
+  validationIssues,
 }: {
   ftp: number;
   step: WorkoutStep;
@@ -213,6 +260,7 @@ function StepEditor({
   onMove: (fromIndex: number, toIndex: number) => void;
   onDuplicate: (step: WorkoutStep, index: number) => void;
   onDelete: (stepId: string) => void;
+  validationIssues: WorkoutValidationIssue[];
 }) {
   const isRepeat = step.type === "repeat";
   const targetMode = step.targetMode ?? (isRepeat ? "single" : "single");
@@ -222,6 +270,12 @@ function StepEditor({
   const durationSuffix = useMinutes ? "min" : "sec";
   const collapsed = collapsedStepIds.has(step.id);
   const childCount = step.children?.length ?? 0;
+  const descendantStepIds = new Set(getDescendantStepIds(step));
+  const stepIssues = validationIssues.filter((issue) => issue.stepId === step.id);
+  const descendantIssues = validationIssues.filter(
+    (issue) => issue.stepId && descendantStepIds.has(issue.stepId),
+  );
+  const collapsedIssues = [...stepIssues, ...descendantIssues];
 
   const updateTargetMode = (mode: TargetMode) => {
     if (mode === "single") {
@@ -333,6 +387,14 @@ function StepEditor({
             onDelete(step.id);
           }}
         />
+        {collapsed ? (
+          <IssueList issues={collapsedIssues} compact />
+        ) : (
+          <>
+            <IssueList issues={stepIssues} compact />
+            {isRepeat ? <IssueList issues={descendantIssues} compact /> : null}
+          </>
+        )}
       </div>
 
       {!collapsed ? (
@@ -478,6 +540,7 @@ function StepEditor({
               onDelete={(stepId) =>
                 onChange({ ...step, children: removeStepById(step.children ?? [], stepId) })
               }
+              validationIssues={validationIssues}
             />
           ))}
         </div>
@@ -488,9 +551,11 @@ function StepEditor({
 
 function CueEditor({
   cues,
+  validationIssues,
   onChange,
 }: {
   cues: WorkoutCue[];
+  validationIssues: WorkoutValidationIssue[];
   onChange: (cues: WorkoutCue[]) => void;
 }) {
   return (
@@ -518,6 +583,8 @@ function CueEditor({
           Add cue
         </button>
       </div>
+
+      <IssueList issues={validationIssues} />
 
       {cues.length > 0 ? (
         <div className="mt-3 space-y-2">
@@ -595,8 +662,15 @@ export function WorkoutEditor({
   onCollapseAllSteps,
   onPruneCollapsedSteps,
   onChange,
+  validationIssues,
 }: WorkoutEditorProps) {
   const selectedStep = findStepById(workout.blocks, selectedStepId);
+  const workoutIssues = validationIssues.filter(
+    (issue) => !issue.stepId && !isCueValidationIssue(issue),
+  );
+  const workoutCueIssues = validationIssues.filter(
+    (issue) => !issue.stepId && isCueValidationIssue(issue),
+  );
 
   const updateWorkout = (patch: Partial<Workout>) => {
     onChange({ ...workout, ...patch });
@@ -637,6 +711,7 @@ export function WorkoutEditor({
             className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm leading-6 text-slate-100 outline-none transition focus:border-cyan-300"
           />
         </label>
+        <IssueList issues={workoutIssues} />
       </div>
 
       <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
@@ -706,11 +781,16 @@ export function WorkoutEditor({
               updateWorkout({ blocks: nextBlocks });
               if (selectedStepId === stepId) onSelectStep(undefined);
             }}
+            validationIssues={validationIssues}
           />
         ))}
       </div>
 
-      <CueEditor cues={workout.cues ?? []} onChange={(cues) => updateWorkout({ cues })} />
+      <CueEditor
+        cues={workout.cues ?? []}
+        validationIssues={workoutCueIssues}
+        onChange={(cues) => updateWorkout({ cues })}
+      />
     </section>
   );
 }

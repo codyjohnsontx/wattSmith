@@ -8,6 +8,15 @@ import { WorkoutLibrary } from "@/components/WorkoutLibrary";
 import { WorkoutSummary } from "@/components/WorkoutSummary";
 import { cloneDefaultWorkout } from "@/lib/workout/defaultWorkout";
 import { createBlockFromTemplate } from "@/lib/workout/editor";
+import {
+  canRedoWorkoutHistory,
+  canUndoWorkoutHistory,
+  createWorkoutHistory,
+  pushWorkoutHistory,
+  redoWorkoutHistory,
+  replaceWorkoutHistory,
+  undoWorkoutHistory,
+} from "@/lib/workout/history";
 import { clampNumber, createId, percentToWatts } from "@/lib/workout/math";
 import {
   deleteWorkout,
@@ -24,8 +33,9 @@ import type {
   Workout,
   WorkoutStep,
 } from "@/lib/workout/types";
+import { validateWorkout } from "@/lib/workout/validation";
 import { getProfileWarnings } from "@/lib/workout/warnings";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type WorkspaceTab = "builder" | "library" | "profile" | "export";
 
@@ -38,6 +48,22 @@ const tabs: { id: WorkspaceTab; label: string }[] = [
 
 function getAllStepIds(steps: WorkoutStep[]): string[] {
   return steps.flatMap((step) => [step.id, ...getAllStepIds(step.children ?? [])]);
+}
+
+function normalizeWorkout(workout: Workout): Workout {
+  return {
+    ...workout,
+    ftp: clampNumber(Math.round(workout.ftp), 1),
+  };
+}
+
+function isTextEditingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+
+  if (target.isContentEditable) return true;
+
+  const tagName = target.tagName.toLowerCase();
+  return tagName === "input" || tagName === "textarea" || tagName === "select";
 }
 
 function createBlankWorkout(ftp: number): Workout {
@@ -63,7 +89,9 @@ function createBlankWorkout(ftp: number): Workout {
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("builder");
-  const [workout, setWorkout] = useState<Workout>(() => cloneDefaultWorkout());
+  const [workoutHistory, setWorkoutHistory] = useState(() =>
+    createWorkoutHistory(cloneDefaultWorkout()),
+  );
   const [savedWorkouts, setSavedWorkouts] = useState<Workout[]>([]);
   const [profile, setProfile] = useState<AthleteProfile>(defaultProfile);
   const [integrations, setIntegrations] = useState<IntegrationConnection[]>([]);
@@ -71,6 +99,69 @@ export default function Home() {
   const [collapsedStepIds, setCollapsedStepIds] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState("Ready");
   const statusTimeoutRef = useRef<number | undefined>(undefined);
+  const workout = workoutHistory.present;
+  const canUndoWorkout = canUndoWorkoutHistory(workoutHistory);
+  const canRedoWorkout = canRedoWorkoutHistory(workoutHistory);
+
+  const flashStatus = useCallback((message: string) => {
+    if (statusTimeoutRef.current !== undefined) {
+      window.clearTimeout(statusTimeoutRef.current);
+    }
+
+    setStatus(message);
+    statusTimeoutRef.current = window.setTimeout(() => {
+      setStatus("Ready");
+      statusTimeoutRef.current = undefined;
+    }, 1800);
+  }, []);
+
+  const syncEditorStateForWorkout = useCallback(
+    (nextWorkout: Workout, options: { resetCollapsed?: boolean } = {}) => {
+      const validStepIds = new Set(getAllStepIds(nextWorkout.blocks));
+      const firstStepId = nextWorkout.blocks[0]?.id;
+
+      setSelectedStepId((current) =>
+        current && validStepIds.has(current) ? current : firstStepId,
+      );
+      setCollapsedStepIds((current) => {
+        if (options.resetCollapsed) return new Set();
+
+        return new Set([...current].filter((stepId) => validStepIds.has(stepId)));
+      });
+    },
+    [],
+  );
+
+  const replaceActiveWorkout = useCallback(
+    (nextWorkout: Workout) => {
+      const normalizedWorkout = normalizeWorkout(nextWorkout);
+      setWorkoutHistory(replaceWorkoutHistory(normalizedWorkout));
+      syncEditorStateForWorkout(normalizedWorkout, { resetCollapsed: true });
+    },
+    [syncEditorStateForWorkout],
+  );
+
+  const updateWorkout = useCallback((nextWorkout: Workout) => {
+    setWorkoutHistory((current) => pushWorkoutHistory(current, normalizeWorkout(nextWorkout)));
+  }, []);
+
+  const undoWorkout = useCallback(() => {
+    if (!canUndoWorkout) return;
+
+    const nextHistory = undoWorkoutHistory(workoutHistory);
+    setWorkoutHistory(nextHistory);
+    syncEditorStateForWorkout(nextHistory.present);
+    flashStatus("Undid change");
+  }, [canUndoWorkout, flashStatus, syncEditorStateForWorkout, workoutHistory]);
+
+  const redoWorkout = useCallback(() => {
+    if (!canRedoWorkout) return;
+
+    const nextHistory = redoWorkoutHistory(workoutHistory);
+    setWorkoutHistory(nextHistory);
+    syncEditorStateForWorkout(nextHistory.present);
+    flashStatus("Redid change");
+  }, [canRedoWorkout, flashStatus, syncEditorStateForWorkout, workoutHistory]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -81,13 +172,9 @@ export default function Home() {
       setIntegrations(loadIntegrationConnections());
 
       if (storedWorkouts[0]) {
-        setWorkout(storedWorkouts[0]);
-        setSelectedStepId(undefined);
-        setCollapsedStepIds(new Set());
+        replaceActiveWorkout(storedWorkouts[0]);
       } else {
-        setWorkout({ ...cloneDefaultWorkout(), ftp: storedProfile.ftp });
-        setSelectedStepId(undefined);
-        setCollapsedStepIds(new Set());
+        replaceActiveWorkout({ ...cloneDefaultWorkout(), ftp: storedProfile.ftp });
       }
     }, 0);
 
@@ -97,7 +184,34 @@ export default function Home() {
         window.clearTimeout(statusTimeoutRef.current);
       }
     };
-  }, []);
+  }, [replaceActiveWorkout]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isTextEditingTarget(event.target)) return;
+
+      const key = event.key.toLowerCase();
+      const usesModifier = event.metaKey || event.ctrlKey;
+      const isUndoShortcut = usesModifier && key === "z" && !event.shiftKey;
+      const isRedoShortcut =
+        (usesModifier && key === "z" && event.shiftKey) ||
+        (event.ctrlKey && !event.metaKey && key === "y");
+
+      if (isUndoShortcut && canUndoWorkout) {
+        event.preventDefault();
+        undoWorkout();
+        return;
+      }
+
+      if (isRedoShortcut && canRedoWorkout) {
+        event.preventDefault();
+        redoWorkout();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [canRedoWorkout, canUndoWorkout, redoWorkout, undoWorkout]);
 
   const ftpExamples = useMemo(
     () => [
@@ -109,27 +223,7 @@ export default function Home() {
   );
 
   const profileWarnings = useMemo(() => getProfileWarnings(profile, workout), [profile, workout]);
-
-  const flashStatus = (message: string) => {
-    if (statusTimeoutRef.current !== undefined) {
-      window.clearTimeout(statusTimeoutRef.current);
-    }
-
-    setStatus(message);
-    statusTimeoutRef.current = window.setTimeout(() => {
-      setStatus("Ready");
-      statusTimeoutRef.current = undefined;
-    }, 1800);
-  };
-
-  const updateWorkout = (nextWorkout: Workout) => {
-    setWorkout({
-      ...nextWorkout,
-      ftp: clampNumber(Math.round(nextWorkout.ftp), 1),
-    });
-  };
-
-  const resetCollapsedSteps = () => setCollapsedStepIds(new Set());
+  const validationIssues = useMemo(() => validateWorkout(workout), [workout]);
 
   const toggleCollapsedStep = (stepId: string) => {
     setCollapsedStepIds((current) => {
@@ -165,7 +259,12 @@ export default function Home() {
       updatedAt: timestamp,
     };
     const nextSavedWorkouts = saveWorkout(nextWorkout);
-    setWorkout(nextWorkout);
+    if (nextWorkout.id === workout.id) {
+      setWorkoutHistory((current) => ({
+        ...current,
+        present: normalizeWorkout(nextWorkout),
+      }));
+    }
     setSavedWorkouts(nextSavedWorkouts);
     flashStatus("Saved locally");
   };
@@ -175,9 +274,7 @@ export default function Home() {
     setSavedWorkouts(nextSavedWorkouts);
     if (workout.id === id) {
       const nextWorkout = nextSavedWorkouts[0] ?? createBlankWorkout(profile.ftp);
-      setWorkout(nextWorkout);
-      setSelectedStepId(undefined);
-      resetCollapsedSteps();
+      replaceActiveWorkout(nextWorkout);
     }
     flashStatus("Deleted workout");
   };
@@ -260,11 +357,25 @@ export default function Home() {
               <span className="mr-2 text-sm text-slate-400">{status}</span>
               <button
                 type="button"
+                disabled={!canUndoWorkout}
+                onClick={undoWorkout}
+                className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Undo
+              </button>
+              <button
+                type="button"
+                disabled={!canRedoWorkout}
+                onClick={redoWorkout}
+                className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Redo
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   const nextWorkout = createBlankWorkout(profile.ftp);
-                  setWorkout(nextWorkout);
-                  setSelectedStepId(nextWorkout.blocks[0]?.id);
-                  resetCollapsedSteps();
+                  replaceActiveWorkout(nextWorkout);
                   setActiveTab("builder");
                   flashStatus("Started blank workout");
                 }}
@@ -283,9 +394,7 @@ export default function Home() {
                 type="button"
                 onClick={() => {
                   const starter = { ...cloneDefaultWorkout(), ftp: profile.ftp };
-                  setWorkout(starter);
-                  setSelectedStepId(starter.blocks[0]?.id);
-                  resetCollapsedSteps();
+                  replaceActiveWorkout(starter);
                   flashStatus("Reset to starter");
                 }}
                 className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-cyan-300"
@@ -308,6 +417,7 @@ export default function Home() {
               onCollapseAllSteps={collapseAllSteps}
               onPruneCollapsedSteps={pruneCollapsedSteps}
               onChange={updateWorkout}
+              validationIssues={validationIssues}
             />
             <div className="space-y-6">
               <WorkoutChart
@@ -326,9 +436,7 @@ export default function Home() {
             activeFtp={workout.ftp}
             profile={profile}
             onLoad={(nextWorkout) => {
-              setWorkout(nextWorkout);
-              setSelectedStepId(nextWorkout.blocks[0]?.id);
-              resetCollapsedSteps();
+              replaceActiveWorkout(nextWorkout);
               setActiveTab("builder");
               flashStatus("Loaded workout");
             }}
