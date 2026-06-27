@@ -218,6 +218,44 @@ describe("workout helpers", () => {
     ).toBe(true);
   });
 
+  it("leaves workout-level validation issues without a step id", () => {
+    const issues = validateWorkout({ ...defaultWorkout, name: "", blocks: [] });
+
+    expect(issues.find((issue) => issue.id === "workout-name")?.stepId).toBeUndefined();
+    expect(issues.find((issue) => issue.id === "workout-blocks")?.stepId).toBeUndefined();
+  });
+
+  it("groups step-level validation issues by step id", () => {
+    const issues = validateWorkout({
+      ...defaultWorkout,
+      blocks: [{ ...createBlockFromTemplate("steady"), id: "invalid-step", durationSeconds: 0 }],
+    });
+
+    expect(issues.find((issue) => issue.id === "invalid-step-duration")?.stepId).toBe(
+      "invalid-step",
+    );
+  });
+
+  it("surfaces repeat child validation issues with the child step id", () => {
+    const repeat = defaultWorkout.blocks.find((block) => block.id === "set-1");
+    if (!repeat?.children?.[0]) {
+      throw new Error("Expected set-1 to include a child interval.");
+    }
+
+    const child = repeat.children[0];
+    const issues = validateWorkout({
+      ...defaultWorkout,
+      blocks: [
+        {
+          ...repeat,
+          children: [{ ...child, durationSeconds: 0 }],
+        },
+      ],
+    });
+
+    expect(issues.find((issue) => issue.id === `${child.id}-duration`)?.stepId).toBe(child.id);
+  });
+
   it("moves blocks without losing items", () => {
     expect(moveItem(["a", "b", "c"], 0, 2)).toEqual(["b", "c", "a"]);
   });
