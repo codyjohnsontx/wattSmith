@@ -1,0 +1,692 @@
+import type { ReusableBlockCategory, ReusableWorkoutBlock, WorkoutStep } from "./types";
+
+const seededAt = "2026-06-28T00:00:00.000Z";
+
+function singleStep(
+  id: string,
+  type: WorkoutStep["type"],
+  label: string,
+  durationSeconds: number,
+  targetPercentFTP: number,
+): WorkoutStep {
+  return {
+    id,
+    type,
+    label,
+    targetMode: "single",
+    durationSeconds,
+    targetPercentFTP,
+  };
+}
+
+function rangeStep(
+  id: string,
+  type: WorkoutStep["type"],
+  label: string,
+  durationSeconds: number,
+  minPercentFTP: number,
+  maxPercentFTP: number,
+): WorkoutStep {
+  return {
+    id,
+    type,
+    label,
+    targetMode: "range",
+    durationSeconds,
+    minPercentFTP,
+    maxPercentFTP,
+  };
+}
+
+function rampStep(
+  id: string,
+  type: Extract<WorkoutStep["type"], "warmup" | "cooldown" | "steady">,
+  label: string,
+  durationSeconds: number,
+  startPercentFTP: number,
+  endPercentFTP: number,
+): WorkoutStep {
+  return {
+    id,
+    type,
+    label,
+    targetMode: "ramp",
+    durationSeconds,
+    startPercentFTP,
+    endPercentFTP,
+  };
+}
+
+function reusableBlock({
+  id,
+  name,
+  category,
+  notes,
+  tags,
+  block,
+}: {
+  id: string;
+  name: string;
+  category: ReusableBlockCategory;
+  notes: string;
+  tags: string[];
+  block: WorkoutStep;
+}): ReusableWorkoutBlock {
+  return {
+    id,
+    name,
+    category,
+    notes,
+    tags,
+    source: "system",
+    block,
+    createdAt: seededAt,
+    updatedAt: seededAt,
+  };
+}
+
+function repeatBlock(
+  id: string,
+  label: string,
+  repeatCount: number,
+  children: WorkoutStep[],
+): WorkoutStep {
+  return {
+    id,
+    type: "repeat",
+    label,
+    repeatCount,
+    children,
+  };
+}
+
+export const systemReusableBlocks: ReusableWorkoutBlock[] = [
+  reusableBlock({
+    id: "system-warmup-ramp",
+    name: "Warmup ramp",
+    category: "warmup",
+    notes: "Progressive opener into aerobic work.",
+    tags: ["warmup", "ramp", "opener"],
+    block: rampStep("system-warmup-ramp-step", "warmup", "Warmup ramp", 10 * 60, 45, 75),
+  }),
+  reusableBlock({
+    id: "system-easy-spin-opener",
+    name: "Easy spin opener",
+    category: "warmup",
+    notes: "Short low-pressure start.",
+    tags: ["warmup", "easy"],
+    block: singleStep("system-easy-spin-opener-step", "warmup", "Easy spin opener", 5 * 60, 45),
+  }),
+  reusableBlock({
+    id: "system-progressive-warmup-15",
+    name: "Progressive warmup 15",
+    category: "warmup",
+    notes: "Longer warmup ramp for harder days.",
+    tags: ["warmup", "ramp", "progressive"],
+    block: rampStep("system-progressive-warmup-15-step", "warmup", "Progressive warmup 15", 15 * 60, 45, 80),
+  }),
+  reusableBlock({
+    id: "system-cadence-wakeups",
+    name: "Cadence wakeups",
+    category: "warmup",
+    notes: "Fast-leg wakeups with easy resets.",
+    tags: ["warmup", "cadence", "activation"],
+    block: repeatBlock("system-cadence-wakeups-step", "Cadence wakeups", 4, [
+      singleStep("system-cadence-wakeups-fast-legs", "steady", "Fast legs", 30, 75),
+      singleStep("system-cadence-wakeups-easy-spin", "recovery", "Easy spin", 90, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-activation-ramps",
+    name: "Activation ramps",
+    category: "warmup",
+    notes: "Short ramps to prime harder efforts.",
+    tags: ["warmup", "activation", "ramp"],
+    block: repeatBlock("system-activation-ramps-step", "Activation ramps", 3, [
+      rampStep("system-activation-ramps-ramp", "steady", "Activation ramp", 60, 70, 95),
+      singleStep("system-activation-ramps-recovery", "recovery", "Recovery", 120, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-threshold-prep-warmup",
+    name: "Threshold prep warmup",
+    category: "warmup",
+    notes: "Controlled prep before threshold work.",
+    tags: ["warmup", "threshold", "prep"],
+    block: repeatBlock("system-threshold-prep-warmup-step", "Threshold prep warmup", 2, [
+      singleStep("system-threshold-prep-warmup-steady", "steady", "Steady", 3 * 60, 85),
+      singleStep("system-threshold-prep-warmup-recovery", "recovery", "Recovery", 2 * 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-vo2-prep-warmup",
+    name: "VO2 prep warmup",
+    category: "warmup",
+    notes: "Openers before VO2 work.",
+    tags: ["warmup", "vo2", "openers"],
+    block: repeatBlock("system-vo2-prep-warmup-step", "VO2 prep warmup", 3, [
+      singleStep("system-vo2-prep-warmup-open", "steady", "Open", 30, 110),
+      singleStep("system-vo2-prep-warmup-easy-spin", "recovery", "Easy spin", 150, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-cooldown-ramp",
+    name: "Cooldown ramp",
+    category: "cooldown",
+    notes: "Smooth ramp down to finish cleanly.",
+    tags: ["cooldown", "ramp"],
+    block: rampStep("system-cooldown-ramp-step", "cooldown", "Cooldown ramp", 8 * 60, 60, 35),
+  }),
+  reusableBlock({
+    id: "system-short-cooldown",
+    name: "Short cooldown",
+    category: "cooldown",
+    notes: "Compact ramp down.",
+    tags: ["cooldown", "short", "ramp"],
+    block: rampStep("system-short-cooldown-step", "cooldown", "Short cooldown", 5 * 60, 55, 35),
+  }),
+  reusableBlock({
+    id: "system-long-cooldown",
+    name: "Long cooldown",
+    category: "cooldown",
+    notes: "Extended ramp down after hard work.",
+    tags: ["cooldown", "long", "ramp"],
+    block: rampStep("system-long-cooldown-step", "cooldown", "Long cooldown", 12 * 60, 65, 35),
+  }),
+  reusableBlock({
+    id: "system-aerobic-flush",
+    name: "Aerobic flush",
+    category: "cooldown",
+    notes: "Easy aerobic spin to clear the legs.",
+    tags: ["cooldown", "flush", "easy"],
+    block: singleStep("system-aerobic-flush-step", "cooldown", "Aerobic flush", 10 * 60, 50),
+  }),
+  reusableBlock({
+    id: "system-descending-cooldown",
+    name: "Descending cooldown",
+    category: "cooldown",
+    notes: "Stepped cooldown with lower targets.",
+    tags: ["cooldown", "descending"],
+    block: repeatBlock("system-descending-cooldown-step", "Descending cooldown", 3, [
+      singleStep("system-descending-cooldown-55", "cooldown", "Steady", 3 * 60, 55),
+      singleStep("system-descending-cooldown-45", "cooldown", "Steady easy", 2 * 60, 45),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-recovery",
+    name: "Recovery",
+    category: "recovery",
+    notes: "Low intensity recovery between harder blocks.",
+    tags: ["recovery", "easy"],
+    block: singleStep("system-recovery-step", "recovery", "Recovery", 3 * 60, 45),
+  }),
+  reusableBlock({
+    id: "system-easy-spin-5",
+    name: "Easy spin 5",
+    category: "recovery",
+    notes: "Five-minute easy reset.",
+    tags: ["recovery", "easy", "spin"],
+    block: singleStep("system-easy-spin-5-step", "recovery", "Easy spin 5", 5 * 60, 45),
+  }),
+  reusableBlock({
+    id: "system-easy-spin-10",
+    name: "Easy spin 10",
+    category: "recovery",
+    notes: "Ten-minute easy reset.",
+    tags: ["recovery", "easy", "spin"],
+    block: singleStep("system-easy-spin-10-step", "recovery", "Easy spin 10", 10 * 60, 45),
+  }),
+  reusableBlock({
+    id: "system-between-set-recovery",
+    name: "Between-set recovery",
+    category: "recovery",
+    notes: "Long reset between work sets.",
+    tags: ["recovery", "between sets"],
+    block: singleStep("system-between-set-recovery-step", "recovery", "Between-set recovery", 6 * 60, 50),
+  }),
+  reusableBlock({
+    id: "system-soft-pedal-micro",
+    name: "Soft pedal micro",
+    category: "recovery",
+    notes: "Very easy one-minute reset.",
+    tags: ["recovery", "micro", "easy"],
+    block: singleStep("system-soft-pedal-micro-step", "recovery", "Soft pedal micro", 60, 40),
+  }),
+  reusableBlock({
+    id: "system-endurance-steady",
+    name: "Endurance steady",
+    category: "endurance",
+    notes: "Thirty-minute aerobic range.",
+    tags: ["endurance", "aerobic", "range"],
+    block: rangeStep("system-endurance-steady-step", "steady", "Endurance steady", 30 * 60, 65, 75),
+  }),
+  reusableBlock({
+    id: "system-endurance-20",
+    name: "Endurance 20",
+    category: "endurance",
+    notes: "Short aerobic endurance block.",
+    tags: ["endurance", "aerobic"],
+    block: rangeStep("system-endurance-20-step", "steady", "Endurance 20", 20 * 60, 65, 72),
+  }),
+  reusableBlock({
+    id: "system-endurance-45",
+    name: "Endurance 45",
+    category: "endurance",
+    notes: "Long aerobic endurance block.",
+    tags: ["endurance", "aerobic", "long"],
+    block: rangeStep("system-endurance-45-step", "steady", "Endurance 45", 45 * 60, 62, 72),
+  }),
+  reusableBlock({
+    id: "system-aerobic-progression",
+    name: "Aerobic progression",
+    category: "endurance",
+    notes: "Gradual aerobic build.",
+    tags: ["endurance", "progression", "ramp"],
+    block: rampStep("system-aerobic-progression-step", "steady", "Aerobic progression", 30 * 60, 60, 78),
+  }),
+  reusableBlock({
+    id: "system-low-cadence-endurance",
+    name: "Low cadence endurance",
+    category: "endurance",
+    notes: "Aerobic repeats with easy resets.",
+    tags: ["endurance", "low cadence"],
+    block: repeatBlock("system-low-cadence-endurance-step", "Low cadence endurance", 4, [
+      singleStep("system-low-cadence-endurance-work", "steady", "Steady", 5 * 60, 75),
+      singleStep("system-low-cadence-endurance-recovery", "recovery", "Recovery", 2 * 60, 55),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-endurance-with-resets",
+    name: "Endurance with resets",
+    category: "endurance",
+    notes: "Aerobic blocks separated by easy spins.",
+    tags: ["endurance", "resets"],
+    block: repeatBlock("system-endurance-with-resets-step", "Endurance with resets", 3, [
+      rangeStep("system-endurance-with-resets-work", "steady", "Endurance", 10 * 60, 65, 75),
+      singleStep("system-endurance-with-resets-recovery", "recovery", "Recovery", 2 * 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-tempo-steady",
+    name: "Tempo steady",
+    category: "tempo",
+    notes: "Simple steady tempo interval.",
+    tags: ["tempo", "steady"],
+    block: singleStep("system-tempo-steady-step", "steady", "Tempo steady", 12 * 60, 82),
+  }),
+  reusableBlock({
+    id: "system-tempo-range",
+    name: "Tempo range",
+    category: "tempo",
+    notes: "Sustainable tempo range.",
+    tags: ["tempo", "range"],
+    block: rangeStep("system-tempo-range-step", "steady", "Tempo range", 20 * 60, 78, 86),
+  }),
+  reusableBlock({
+    id: "system-tempo-progression",
+    name: "Tempo progression",
+    category: "tempo",
+    notes: "Controlled tempo build.",
+    tags: ["tempo", "progression", "ramp"],
+    block: rampStep("system-tempo-progression-step", "steady", "Tempo progression", 15 * 60, 76, 88),
+  }),
+  reusableBlock({
+    id: "system-tempo-3-x-8",
+    name: "Tempo 3 x 8",
+    category: "tempo",
+    notes: "Classic tempo repeats.",
+    tags: ["tempo", "repeats"],
+    block: repeatBlock("system-tempo-3-x-8-step", "Tempo 3 x 8", 3, [
+      singleStep("system-tempo-3-x-8-work", "steady", "Tempo", 8 * 60, 82),
+      singleStep("system-tempo-3-x-8-recovery", "recovery", "Recovery", 3 * 60, 55),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-big-gear-tempo",
+    name: "Big gear tempo",
+    category: "tempo",
+    notes: "Tempo work with easy resets.",
+    tags: ["tempo", "big gear"],
+    block: repeatBlock("system-big-gear-tempo-step", "Big gear tempo", 4, [
+      singleStep("system-big-gear-tempo-work", "steady", "Big gear tempo", 5 * 60, 84),
+      singleStep("system-big-gear-tempo-recovery", "recovery", "Recovery", 2 * 60, 55),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-sweet-spot-interval",
+    name: "Sweet spot interval",
+    category: "sweet-spot",
+    notes: "Sweet spot repeats with aerobic recovery.",
+    tags: ["sweet spot", "repeats"],
+    block: repeatBlock("system-sweet-spot-interval-step", "Sweet spot interval", 3, [
+      rangeStep("system-sweet-spot-interval-work", "steady", "Sweet spot", 8 * 60, 88, 94),
+      singleStep("system-sweet-spot-interval-recovery", "recovery", "Recovery", 4 * 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-sweet-spot-2-x-12",
+    name: "Sweet spot 2 x 12",
+    category: "sweet-spot",
+    notes: "Two longer sweet spot efforts.",
+    tags: ["sweet spot", "repeats"],
+    block: repeatBlock("system-sweet-spot-2-x-12-step", "Sweet spot 2 x 12", 2, [
+      rangeStep("system-sweet-spot-2-x-12-work", "steady", "Sweet spot", 12 * 60, 88, 94),
+      singleStep("system-sweet-spot-2-x-12-recovery", "recovery", "Recovery", 5 * 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-sweet-spot-3-x-10",
+    name: "Sweet spot 3 x 10",
+    category: "sweet-spot",
+    notes: "Three steady sweet spot efforts.",
+    tags: ["sweet spot", "repeats"],
+    block: repeatBlock("system-sweet-spot-3-x-10-step", "Sweet spot 3 x 10", 3, [
+      rangeStep("system-sweet-spot-3-x-10-work", "steady", "Sweet spot", 10 * 60, 88, 94),
+      singleStep("system-sweet-spot-3-x-10-recovery", "recovery", "Recovery", 4 * 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-sweet-spot-4-x-8",
+    name: "Sweet spot 4 x 8",
+    category: "sweet-spot",
+    notes: "Four compact sweet spot efforts.",
+    tags: ["sweet spot", "repeats"],
+    block: repeatBlock("system-sweet-spot-4-x-8-step", "Sweet spot 4 x 8", 4, [
+      rangeStep("system-sweet-spot-4-x-8-work", "steady", "Sweet spot", 8 * 60, 88, 94),
+      singleStep("system-sweet-spot-4-x-8-recovery", "recovery", "Recovery", 3 * 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-sweet-spot-progression",
+    name: "Sweet spot progression",
+    category: "sweet-spot",
+    notes: "Single sweet spot ramp.",
+    tags: ["sweet spot", "progression", "ramp"],
+    block: rampStep("system-sweet-spot-progression-step", "steady", "Sweet spot progression", 15 * 60, 88, 94),
+  }),
+  reusableBlock({
+    id: "system-sweet-spot-burst-finish",
+    name: "Sweet spot burst finish",
+    category: "sweet-spot",
+    notes: "Sweet spot work with a hard finish.",
+    tags: ["sweet spot", "burst"],
+    block: repeatBlock("system-sweet-spot-burst-finish-step", "Sweet spot burst finish", 3, [
+      singleStep("system-sweet-spot-burst-finish-work", "steady", "Sweet spot", 7 * 60, 90),
+      singleStep("system-sweet-spot-burst-finish-burst", "steady", "Burst", 30, 105),
+      singleStep("system-sweet-spot-burst-finish-recovery", "recovery", "Recovery", 3 * 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-threshold-over-under",
+    name: "Threshold over/under",
+    category: "threshold",
+    notes: "Over/under rounds around FTP.",
+    tags: ["threshold", "over under"],
+    block: repeatBlock("system-threshold-over-under-step", "Threshold over/under", 6, [
+      singleStep("system-threshold-over-under-under", "steady", "Under", 2 * 60, 95),
+      singleStep("system-threshold-over-under-over", "steady", "Over", 60, 105),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-threshold-steady-10",
+    name: "Threshold steady 10",
+    category: "threshold",
+    notes: "Ten minutes at FTP.",
+    tags: ["threshold", "steady", "ftp"],
+    block: singleStep("system-threshold-steady-10-step", "steady", "Threshold steady 10", 10 * 60, 100),
+  }),
+  reusableBlock({
+    id: "system-threshold-2-x-10",
+    name: "Threshold 2 x 10",
+    category: "threshold",
+    notes: "Two FTP efforts.",
+    tags: ["threshold", "ftp", "repeats"],
+    block: repeatBlock("system-threshold-2-x-10-step", "Threshold 2 x 10", 2, [
+      singleStep("system-threshold-2-x-10-work", "steady", "Threshold", 10 * 60, 100),
+      singleStep("system-threshold-2-x-10-recovery", "recovery", "Recovery", 5 * 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-threshold-3-x-8",
+    name: "Threshold 3 x 8",
+    category: "threshold",
+    notes: "Three compact FTP efforts.",
+    tags: ["threshold", "ftp", "repeats"],
+    block: repeatBlock("system-threshold-3-x-8-step", "Threshold 3 x 8", 3, [
+      singleStep("system-threshold-3-x-8-work", "steady", "Threshold", 8 * 60, 100),
+      singleStep("system-threshold-3-x-8-recovery", "recovery", "Recovery", 4 * 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-threshold-progression",
+    name: "Threshold progression",
+    category: "threshold",
+    notes: "Controlled build through FTP.",
+    tags: ["threshold", "progression", "ramp"],
+    block: rampStep("system-threshold-progression-step", "steady", "Threshold progression", 12 * 60, 95, 102),
+  }),
+  reusableBlock({
+    id: "system-ftp-criss-cross",
+    name: "FTP criss-cross",
+    category: "threshold",
+    notes: "Alternates just below and above FTP.",
+    tags: ["threshold", "ftp", "criss-cross"],
+    block: repeatBlock("system-ftp-criss-cross-step", "FTP criss-cross", 5, [
+      singleStep("system-ftp-criss-cross-under", "steady", "Steady", 2 * 60, 97),
+      singleStep("system-ftp-criss-cross-over", "steady", "Surge", 30, 108),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-vo2-30-15",
+    name: "VO2 30/15",
+    category: "vo2",
+    notes: "Short VO2 repeats with brief floats.",
+    tags: ["vo2", "micro intervals"],
+    block: repeatBlock("system-vo2-30-15-step", "VO2 30/15", 6, [
+      singleStep("system-vo2-30-15-on", "steady", "VO2 on", 30, 120),
+      singleStep("system-vo2-30-15-float", "recovery", "Recovery", 15, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-vo2-40-20",
+    name: "VO2 40/20",
+    category: "vo2",
+    notes: "Forty/twenty VO2 repeats.",
+    tags: ["vo2", "micro intervals"],
+    block: repeatBlock("system-vo2-40-20-step", "VO2 40/20", 8, [
+      singleStep("system-vo2-40-20-on", "steady", "VO2 on", 40, 118),
+      singleStep("system-vo2-40-20-recovery", "recovery", "Recovery", 20, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-vo2-2-minute-repeats",
+    name: "VO2 2-minute repeats",
+    category: "vo2",
+    notes: "Two-minute VO2 efforts.",
+    tags: ["vo2", "repeats"],
+    block: repeatBlock("system-vo2-2-minute-repeats-step", "VO2 2-minute repeats", 5, [
+      singleStep("system-vo2-2-minute-repeats-work", "steady", "VO2", 2 * 60, 115),
+      singleStep("system-vo2-2-minute-repeats-recovery", "recovery", "Recovery", 2 * 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-vo2-3-minute-repeats",
+    name: "VO2 3-minute repeats",
+    category: "vo2",
+    notes: "Three-minute VO2 efforts.",
+    tags: ["vo2", "repeats"],
+    block: repeatBlock("system-vo2-3-minute-repeats-step", "VO2 3-minute repeats", 4, [
+      singleStep("system-vo2-3-minute-repeats-work", "steady", "VO2", 3 * 60, 112),
+      singleStep("system-vo2-3-minute-repeats-recovery", "recovery", "Recovery", 3 * 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-vo2-4-x-4",
+    name: "VO2 4 x 4",
+    category: "vo2",
+    notes: "Classic four-by-four VO2 set.",
+    tags: ["vo2", "classic"],
+    block: repeatBlock("system-vo2-4-x-4-step", "VO2 4 x 4", 4, [
+      singleStep("system-vo2-4-x-4-work", "steady", "VO2", 4 * 60, 110),
+      singleStep("system-vo2-4-x-4-recovery", "recovery", "Recovery", 4 * 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-vo2-ladder",
+    name: "VO2 ladder",
+    category: "vo2",
+    notes: "Single ladder through longer VO2 steps.",
+    tags: ["vo2", "ladder"],
+    block: repeatBlock("system-vo2-ladder-step", "VO2 ladder", 1, [
+      singleStep("system-vo2-ladder-60-on", "steady", "VO2 60", 60, 112),
+      singleStep("system-vo2-ladder-60-off", "recovery", "Recovery", 60, 50),
+      singleStep("system-vo2-ladder-90-on", "steady", "VO2 90", 90, 115),
+      singleStep("system-vo2-ladder-90-off", "recovery", "Recovery", 90, 50),
+      singleStep("system-vo2-ladder-120-on", "steady", "VO2 120", 120, 118),
+      singleStep("system-vo2-ladder-120-off", "recovery", "Recovery", 120, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-vo2-float-set",
+    name: "VO2 float set",
+    category: "vo2",
+    notes: "VO2 efforts with aerobic floats.",
+    tags: ["vo2", "float"],
+    block: repeatBlock("system-vo2-float-set-step", "VO2 float set", 5, [
+      singleStep("system-vo2-float-set-work", "steady", "VO2", 60, 118),
+      singleStep("system-vo2-float-set-float", "steady", "Float", 60, 60),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-sprint-anaerobic-set",
+    name: "Sprint/anaerobic set",
+    category: "anaerobic",
+    notes: "Sprint repeats with long easy spins.",
+    tags: ["anaerobic", "sprint"],
+    block: repeatBlock("system-sprint-anaerobic-set-step", "Sprint/anaerobic set", 8, [
+      singleStep("system-sprint-anaerobic-set-sprint", "steady", "Sprint", 20, 140),
+      singleStep("system-sprint-anaerobic-set-recovery", "recovery", "Recovery", 100, 45),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-anaerobic-30-90",
+    name: "Anaerobic 30/90",
+    category: "anaerobic",
+    notes: "Thirty-second anaerobic repeats.",
+    tags: ["anaerobic", "repeats"],
+    block: repeatBlock("system-anaerobic-30-90-step", "Anaerobic 30/90", 6, [
+      singleStep("system-anaerobic-30-90-work", "steady", "Anaerobic", 30, 130),
+      singleStep("system-anaerobic-30-90-recovery", "recovery", "Recovery", 90, 45),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-one-minute-anaerobic",
+    name: "One-minute anaerobic",
+    category: "anaerobic",
+    notes: "One-minute anaerobic efforts.",
+    tags: ["anaerobic", "one minute"],
+    block: repeatBlock("system-one-minute-anaerobic-step", "One-minute anaerobic", 5, [
+      singleStep("system-one-minute-anaerobic-work", "steady", "Anaerobic", 60, 125),
+      singleStep("system-one-minute-anaerobic-recovery", "recovery", "Recovery", 3 * 60, 45),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-sprint-primer",
+    name: "Sprint primer",
+    category: "anaerobic",
+    notes: "Short sprint primers.",
+    tags: ["anaerobic", "sprint", "primer"],
+    block: repeatBlock("system-sprint-primer-step", "Sprint primer", 4, [
+      singleStep("system-sprint-primer-sprint", "steady", "Sprint", 10, 150),
+      singleStep("system-sprint-primer-recovery", "recovery", "Recovery", 110, 45),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-neuromuscular-sprints",
+    name: "Neuromuscular sprints",
+    category: "anaerobic",
+    notes: "Very short high-power sprints.",
+    tags: ["anaerobic", "sprint", "neuromuscular"],
+    block: repeatBlock("system-neuromuscular-sprints-step", "Neuromuscular sprints", 6, [
+      singleStep("system-neuromuscular-sprints-sprint", "steady", "Sprint", 12, 160),
+      singleStep("system-neuromuscular-sprints-recovery", "recovery", "Recovery", 108, 40),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-microburst-15-15",
+    name: "Microburst 15/15",
+    category: "anaerobic",
+    notes: "Rapid anaerobic microbursts.",
+    tags: ["anaerobic", "microburst"],
+    block: repeatBlock("system-microburst-15-15-step", "Microburst 15/15", 10, [
+      singleStep("system-microburst-15-15-work", "steady", "Microburst", 15, 135),
+      singleStep("system-microburst-15-15-recovery", "recovery", "Recovery", 15, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-steady",
+    name: "Steady interval",
+    category: "general",
+    notes: "Simple five-minute steady block.",
+    tags: ["general", "steady"],
+    block: singleStep("system-steady-step", "steady", "Steady interval", 5 * 60, 85),
+  }),
+  reusableBlock({
+    id: "system-two-step-repeat",
+    name: "Two-step repeat",
+    category: "general",
+    notes: "Four rounds of work and recovery.",
+    tags: ["general", "repeat"],
+    block: repeatBlock("system-two-step-repeat-step", "Two-step repeat", 4, [
+      singleStep("system-two-step-repeat-work", "steady", "Work", 60, 105),
+      singleStep("system-two-step-repeat-recover", "recovery", "Recover", 60, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-three-step-repeat",
+    name: "Three-step repeat",
+    category: "general",
+    notes: "Build, hard, recover repeat scaffold.",
+    tags: ["general", "repeat"],
+    block: repeatBlock("system-three-step-repeat-step", "Three-step repeat", 3, [
+      singleStep("system-three-step-repeat-build", "steady", "Build", 60, 90),
+      singleStep("system-three-step-repeat-hard", "steady", "Hard", 60, 110),
+      singleStep("system-three-step-repeat-recover", "recovery", "Recover", 120, 50),
+    ]),
+  }),
+  reusableBlock({
+    id: "system-ramp-up",
+    name: "Ramp up",
+    category: "general",
+    notes: "Six-minute progressive ramp.",
+    tags: ["general", "ramp"],
+    block: rampStep("system-ramp-up-step", "steady", "Ramp up", 6 * 60, 70, 95),
+  }),
+  reusableBlock({
+    id: "system-ramp-down",
+    name: "Ramp down",
+    category: "general",
+    notes: "Six-minute controlled ramp down.",
+    tags: ["general", "ramp"],
+    block: rampStep("system-ramp-down-step", "steady", "Ramp down", 6 * 60, 95, 70),
+  }),
+  reusableBlock({
+    id: "system-open-steady-block",
+    name: "Open steady block",
+    category: "general",
+    notes: "Ten-minute steady aerobic block.",
+    tags: ["general", "steady", "open"],
+    block: singleStep("system-open-steady-block-step", "steady", "Open steady block", 10 * 60, 75),
+  }),
+  reusableBlock({
+    id: "system-custom-repeat-scaffold",
+    name: "Custom repeat scaffold",
+    category: "general",
+    notes: "Basic work/recovery repeat scaffold.",
+    tags: ["general", "scaffold", "repeat"],
+    block: repeatBlock("system-custom-repeat-scaffold-step", "Custom repeat scaffold", 3, [
+      singleStep("system-custom-repeat-scaffold-work", "steady", "Steady", 2 * 60, 90),
+      singleStep("system-custom-repeat-scaffold-recovery", "recovery", "Recovery", 2 * 60, 50),
+    ]),
+  }),
+];

@@ -1,21 +1,48 @@
 import {
-  blockTemplateLabels,
+  canDropStepAtLocation,
+  cloneStepWithNewIds,
   createBlockFromTemplate,
+  type DraggedWorkoutItem,
   duplicateStep,
+  findStepLocation,
   findStepById,
+  insertStepAtLocation,
   moveItem,
+  moveStepToLocation,
   removeStepById,
+  type WorkoutDropJoint,
+  type WorkoutStepLocation,
+  type WorkoutStepContainerId,
   updateStepById,
-  type BlockTemplateId,
 } from "@/lib/workout/editor";
+import { ReusableBlockManager } from "@/components/ReusableBlockManager";
+import { ReusableBlockEditorModal, type ReusableBlockModalMode } from "@/components/ReusableBlockEditorModal";
+import { WorkoutDropJoint as WorkoutDropJointComponent } from "@/components/WorkoutDropJoint";
+import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  useDraggable,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { clampNumber, createId, formatDuration, percentToWatts } from "@/lib/workout/math";
 import type {
+  ReusableBlockCategory,
+  ReusableWorkoutBlock,
   TargetMode,
   Workout,
   WorkoutCue,
   WorkoutStep,
   WorkoutValidationIssue,
 } from "@/lib/workout/types";
+import { useState } from "react";
 
 interface WorkoutEditorProps {
   workout: Workout;
@@ -28,18 +55,15 @@ interface WorkoutEditorProps {
   onPruneCollapsedSteps: (stepIds: string[]) => void;
   onChange: (workout: Workout) => void;
   validationIssues: WorkoutValidationIssue[];
+  reusableBlocks: ReusableWorkoutBlock[];
+  onSaveReusableBlock: (block: ReusableWorkoutBlock) => void;
+  onDeleteReusableBlock: (id: string) => void;
 }
 
-const blockTemplateIds: BlockTemplateId[] = [
-  "warmup-ramp",
-  "steady",
-  "recovery",
-  "two-step-repeat",
-  "three-step-repeat",
-  "ramp-up",
-  "ramp-down",
-  "cooldown-ramp",
-];
+interface SaveBlockModalState {
+  mode: ReusableBlockModalMode;
+  block: ReusableWorkoutBlock;
+}
 
 function inputClassName() {
   return "mt-1 h-10 w-full min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300";
@@ -55,6 +79,14 @@ function issueClassName(severity: WorkoutValidationIssue["severity"]) {
   return severity === "error"
     ? "border-red-400/35 bg-red-400/10 text-red-100"
     : "border-amber-300/35 bg-amber-300/10 text-amber-100";
+}
+
+function isDropJointActive(
+  activeDropJoint: WorkoutDropJoint | undefined,
+  containerId: WorkoutStepContainerId,
+  index: number,
+): boolean {
+  return activeDropJoint?.containerId === containerId && activeDropJoint.index === index;
 }
 
 function IssueList({
@@ -161,6 +193,50 @@ function stepIncludesId(step: WorkoutStep, stepId?: string): boolean {
   return step.children?.some((child) => stepIncludesId(child, stepId)) ?? false;
 }
 
+function getHighestTargetPercent(step: WorkoutStep): number {
+  if (step.type === "repeat") {
+    return Math.max(0, ...(step.children ?? []).map(getHighestTargetPercent));
+  }
+
+  return Math.max(
+    0,
+    step.targetPercentFTP ?? 0,
+    step.startPercentFTP ?? 0,
+    step.endPercentFTP ?? 0,
+    step.minPercentFTP ?? 0,
+    step.maxPercentFTP ?? 0,
+  );
+}
+
+function inferReusableBlockCategory(step: WorkoutStep): ReusableBlockCategory {
+  if (step.type === "warmup") return "warmup";
+  if (step.type === "cooldown") return "cooldown";
+  if (step.type === "recovery") return "recovery";
+
+  const highestTarget = getHighestTargetPercent(step);
+  if (highestTarget >= 130) return "anaerobic";
+  if (highestTarget >= 110) return "vo2";
+
+  return "general";
+}
+
+function createReusableBlockFromWorkoutStep(step: WorkoutStep): ReusableWorkoutBlock {
+  const timestamp = new Date().toISOString();
+  const name = step.label || "Saved block";
+
+  return {
+    id: createId("reusable-block"),
+    name,
+    category: inferReusableBlockCategory(step),
+    notes: "",
+    tags: [],
+    source: "user",
+    block: cloneStepWithNewIds({ ...step, label: name }),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 function StepControls({
   canMoveUp,
   canMoveDown,
@@ -168,6 +244,7 @@ function StepControls({
   onMoveUp,
   onMoveDown,
   onDuplicate,
+  onSaveBlock,
   onDelete,
 }: {
   canMoveUp: boolean;
@@ -176,6 +253,7 @@ function StepControls({
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDuplicate: () => void;
+  onSaveBlock: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -214,6 +292,16 @@ function StepControls({
       </button>
       <button
         type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onSaveBlock();
+        }}
+        className={buttonClassName()}
+      >
+        Save block
+      </button>
+      <button
+        type="button"
         disabled={!canDelete}
         onClick={(event) => {
           event.stopPropagation();
@@ -235,13 +323,17 @@ function StepEditor({
   siblingCount,
   selected,
   selectedStepId,
+  activeDraggedStepId,
+  activeDropJoint,
   collapsedStepIds,
   onSelect,
   onToggleCollapsedStep,
   onPruneCollapsedSteps,
+  getDropJointDisabled,
   onChange,
   onMove,
   onDuplicate,
+  onSaveBlock,
   onDelete,
   validationIssues,
 }: {
@@ -252,13 +344,17 @@ function StepEditor({
   siblingCount: number;
   selected: boolean;
   selectedStepId?: string;
+  activeDraggedStepId?: string;
+  activeDropJoint?: WorkoutDropJoint;
   collapsedStepIds: Set<string>;
   onSelect: (stepId?: string) => void;
   onToggleCollapsedStep: (stepId: string) => void;
   onPruneCollapsedSteps: (stepIds: string[]) => void;
+  getDropJointDisabled: (location: WorkoutStepLocation) => boolean;
   onChange: (step: WorkoutStep) => void;
   onMove: (fromIndex: number, toIndex: number) => void;
   onDuplicate: (step: WorkoutStep, index: number) => void;
+  onSaveBlock: (step: WorkoutStep) => void;
   onDelete: (stepId: string) => void;
   validationIssues: WorkoutValidationIssue[];
 }) {
@@ -276,6 +372,18 @@ function StepEditor({
     (issue) => issue.stepId && descendantStepIds.has(issue.stepId),
   );
   const collapsedIssues = [...stepIssues, ...descendantIssues];
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `workout-step:${step.id}`,
+    data: {
+      kind: "workout-step",
+      stepId: step.id,
+    },
+  });
+  const dragStyle = transform
+    ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+      }
+    : undefined;
 
   const updateTargetMode = (mode: TargetMode) => {
     if (mode === "single") {
@@ -324,8 +432,12 @@ function StepEditor({
 
   return (
     <article
+      ref={setNodeRef}
+      style={dragStyle}
       className={`rounded-lg border p-4 transition ${
         selected ? "border-cyan-300 bg-cyan-300/5" : "border-slate-800 bg-slate-950/70"
+      } ${
+        isDragging || activeDraggedStepId === step.id ? "opacity-60" : ""
       }`}
       tabIndex={0}
       aria-label={`Select ${step.label}`}
@@ -341,6 +453,16 @@ function StepEditor({
     >
       <div className="grid gap-3">
         <div className="flex flex-wrap items-start gap-2">
+          <button
+            type="button"
+            className="grid h-8 w-8 shrink-0 cursor-grab place-items-center rounded-md border border-slate-700 text-xs font-bold text-slate-400 transition hover:border-cyan-300 hover:text-cyan-100 active:cursor-grabbing"
+            aria-label={`Drag ${step.label}`}
+            onClick={(event) => event.stopPropagation()}
+            {...attributes}
+            {...listeners}
+          >
+            ::
+          </button>
           <button
             type="button"
             aria-label={`${collapsed ? "Expand" : "Collapse"} ${step.label}`}
@@ -381,6 +503,7 @@ function StepEditor({
           onMoveUp={() => onMove(index, index - 1)}
           onMoveDown={() => onMove(index, index + 1)}
           onDuplicate={() => onDuplicate(step, index)}
+          onSaveBlock={() => onSaveBlock(step)}
           onDelete={() => {
             onPruneCollapsedSteps(getRemovedStepIds(step));
             if (stepIncludesId(step, selectedStepId)) onSelect(undefined);
@@ -504,41 +627,62 @@ function StepEditor({
               Add child
             </button>
           </div>
-          {step.children.map((child, childIndex) => (
-            <StepEditor
-              key={child.id}
-              ftp={ftp}
-              step={child}
-              depth={depth + 1}
-              index={childIndex}
-              siblingCount={step.children?.length ?? 0}
-              selected={child.id === selectedStepId}
-              selectedStepId={selectedStepId}
-              collapsedStepIds={collapsedStepIds}
-              onSelect={onSelect}
-              onToggleCollapsedStep={onToggleCollapsedStep}
-              onPruneCollapsedSteps={onPruneCollapsedSteps}
-              onChange={(updatedChild) =>
-                onChange({
-                  ...step,
-                  children: step.children?.map((item) =>
-                    item.id === updatedChild.id ? updatedChild : item,
-                  ),
-                })
-              }
-              onMove={(fromIndex, toIndex) =>
-                onChange({ ...step, children: moveItem(step.children ?? [], fromIndex, toIndex) })
-              }
-              onDuplicate={(childStep, duplicateIndex) => {
-                const children = [...(step.children ?? [])];
-                children.splice(duplicateIndex + 1, 0, duplicateStep(childStep));
-                onChange({ ...step, children });
-              }}
-              onDelete={(stepId) =>
-                onChange({ ...step, children: removeStepById(step.children ?? [], stepId) })
-              }
-              validationIssues={validationIssues}
+          {depth === 0 ? (
+            <WorkoutDropJointComponent
+              containerId={step.id}
+              index={0}
+              active={isDropJointActive(activeDropJoint, step.id, 0)}
+              disabled={getDropJointDisabled({ containerId: step.id, index: 0 })}
             />
+          ) : null}
+          {step.children.map((child, childIndex) => (
+            <div key={child.id}>
+              <StepEditor
+                ftp={ftp}
+                step={child}
+                depth={depth + 1}
+                index={childIndex}
+                siblingCount={step.children?.length ?? 0}
+                selected={child.id === selectedStepId}
+                selectedStepId={selectedStepId}
+                activeDraggedStepId={activeDraggedStepId}
+                activeDropJoint={activeDropJoint}
+                collapsedStepIds={collapsedStepIds}
+                onSelect={onSelect}
+                onToggleCollapsedStep={onToggleCollapsedStep}
+                onPruneCollapsedSteps={onPruneCollapsedSteps}
+                getDropJointDisabled={getDropJointDisabled}
+                onChange={(updatedChild) =>
+                  onChange({
+                    ...step,
+                    children: step.children?.map((item) =>
+                      item.id === updatedChild.id ? updatedChild : item,
+                    ),
+                  })
+                }
+                onMove={(fromIndex, toIndex) =>
+                  onChange({ ...step, children: moveItem(step.children ?? [], fromIndex, toIndex) })
+                }
+                onDuplicate={(childStep, duplicateIndex) => {
+                  const children = [...(step.children ?? [])];
+                  children.splice(duplicateIndex + 1, 0, duplicateStep(childStep));
+                  onChange({ ...step, children });
+                }}
+                onSaveBlock={onSaveBlock}
+                onDelete={(stepId) =>
+                  onChange({ ...step, children: removeStepById(step.children ?? [], stepId) })
+                }
+                validationIssues={validationIssues}
+              />
+              {depth === 0 ? (
+                <WorkoutDropJointComponent
+                  containerId={step.id}
+                  index={childIndex + 1}
+                  active={isDropJointActive(activeDropJoint, step.id, childIndex + 1)}
+                  disabled={getDropJointDisabled({ containerId: step.id, index: childIndex + 1 })}
+                />
+              ) : null}
+            </div>
           ))}
         </div>
       ) : null}
@@ -660,7 +804,13 @@ export function WorkoutEditor({
   onPruneCollapsedSteps,
   onChange,
   validationIssues,
+  reusableBlocks,
+  onSaveReusableBlock,
+  onDeleteReusableBlock,
 }: WorkoutEditorProps) {
+  const [saveBlockModalState, setSaveBlockModalState] = useState<SaveBlockModalState | undefined>();
+  const [activeDragItem, setActiveDragItem] = useState<DraggedWorkoutItem | undefined>();
+  const [activeDropJoint, setActiveDropJoint] = useState<WorkoutDropJoint | undefined>();
   const selectedStep = findStepById(workout.blocks, selectedStepId);
   const workoutIssues = validationIssues.filter(
     (issue) => !issue.stepId && !isCueValidationIssue(issue),
@@ -673,10 +823,144 @@ export function WorkoutEditor({
     onChange({ ...workout, ...patch });
   };
 
-  const appendBlock = (templateId: BlockTemplateId) => {
-    const nextBlock = createBlockFromTemplate(templateId);
-    updateWorkout({ blocks: [...workout.blocks, nextBlock] });
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 6,
+      },
+    }),
+    useSensor(KeyboardSensor),
+  );
+
+  const dndCollisionDetection: CollisionDetection = (args) => {
+    return closestCenter({
+      ...args,
+      droppableContainers: args.droppableContainers.filter((container) => {
+        const data = container.data.current;
+        return data?.type === "workout-drop-joint" && data.disabled !== true;
+      }),
+    });
+  };
+
+  const getDraggedStep = (item: DraggedWorkoutItem | undefined): WorkoutStep | undefined => {
+    if (!item) return undefined;
+    if (item.kind === "library-block") {
+      return reusableBlocks.find((block) => block.id === item.reusableBlockId)?.block;
+    }
+
+    return findStepById(workout.blocks, item.stepId);
+  };
+
+  const isNoOpMove = (item: DraggedWorkoutItem | undefined, location: WorkoutStepLocation): boolean => {
+    if (item?.kind !== "workout-step") return false;
+
+    const from = findStepLocation(workout.blocks, item.stepId);
+    if (!from || from.containerId !== location.containerId) return false;
+
+    const normalizedIndex = location.index > from.index ? location.index - 1 : location.index;
+    return normalizedIndex === from.index;
+  };
+
+  const canDropDraggedItemAtLocation = (
+    item: DraggedWorkoutItem | undefined,
+    location: WorkoutStepLocation,
+  ): boolean => {
+    const step = getDraggedStep(item);
+    if (!step) return false;
+    if (isNoOpMove(item, location)) return false;
+
+    return canDropStepAtLocation(workout.blocks, step, location);
+  };
+
+  const getDropJointDisabled = (location: WorkoutStepLocation): boolean => {
+    if (!activeDragItem) return false;
+    return !canDropDraggedItemAtLocation(activeDragItem, location);
+  };
+
+  const getDropJointFromEvent = (event: DragOverEvent | DragEndEvent): WorkoutDropJoint | undefined => {
+    const data = event.over?.data.current;
+    if (data?.type !== "workout-drop-joint") return undefined;
+
+    const location = {
+      containerId: data.containerId as WorkoutStepContainerId,
+      index: Number(data.index),
+    };
+
+    return canDropDraggedItemAtLocation(activeDragItem, location) ? location : undefined;
+  };
+
+  const insertReusableBlockAtLocation = (
+    reusableBlock: ReusableWorkoutBlock,
+    location: WorkoutStepLocation,
+  ) => {
+    const nextBlock = cloneStepWithNewIds(reusableBlock.block);
+    updateWorkout({ blocks: insertStepAtLocation(workout.blocks, location, nextBlock) });
     onSelectStep(nextBlock.id);
+  };
+
+  const insertReusableBlock = (reusableBlock: ReusableWorkoutBlock) => {
+    insertReusableBlockAtLocation(reusableBlock, {
+      containerId: "root",
+      index: workout.blocks.length,
+    });
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const item = event.active.data.current as DraggedWorkoutItem | undefined;
+    if (!item) return;
+
+    setActiveDragItem(item);
+    setActiveDropJoint(undefined);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    setActiveDropJoint(getDropJointFromEvent(event));
+  };
+
+  const handleDragCancel = () => {
+    setActiveDragItem(undefined);
+    setActiveDropJoint(undefined);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const item = activeDragItem;
+    const dropJoint = getDropJointFromEvent(event);
+
+    setActiveDragItem(undefined);
+    setActiveDropJoint(undefined);
+
+    if (!item || !dropJoint) return;
+
+    if (item.kind === "library-block") {
+      const reusableBlock = reusableBlocks.find((block) => block.id === item.reusableBlockId);
+      if (reusableBlock) insertReusableBlockAtLocation(reusableBlock, dropJoint);
+      return;
+    }
+
+    const from = findStepLocation(workout.blocks, item.stepId);
+    if (!from) return;
+
+    const nextBlocks = moveStepToLocation(workout.blocks, from, dropJoint);
+    if (nextBlocks === workout.blocks) return;
+
+    updateWorkout({ blocks: nextBlocks });
+    onSelectStep(item.stepId);
+  };
+
+  const activeDragBlock =
+    activeDragItem?.kind === "library-block"
+      ? reusableBlocks.find((block) => block.id === activeDragItem.reusableBlockId)
+      : undefined;
+  const activeDragStep =
+    activeDragItem?.kind === "workout-step"
+      ? findStepById(workout.blocks, activeDragItem.stepId)
+      : undefined;
+
+  const openSaveBlockModal = (step: WorkoutStep) => {
+    setSaveBlockModalState({
+      mode: "save-workout-block",
+      block: createReusableBlockFromWorkoutStep(step),
+    });
   };
 
   return (
@@ -711,82 +995,127 @@ export function WorkoutEditor({
         <IssueList issues={workoutIssues} />
       </div>
 
-      <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-          Add block
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {blockTemplateIds.map((templateId) => (
-            <button
-              key={templateId}
-              type="button"
-              onClick={() => appendBlock(templateId)}
-              className={buttonClassName()}
-            >
-              {blockTemplateLabels[templateId]}
-            </button>
+      <DndContext
+        id="workout-builder-dnd"
+        sensors={sensors}
+        collisionDetection={dndCollisionDetection}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragCancel={handleDragCancel}
+        onDragEnd={handleDragEnd}
+      >
+        <ReusableBlockManager
+          reusableBlocks={reusableBlocks}
+          activeDragBlockId={activeDragBlock?.id}
+          onInsertBlock={insertReusableBlock}
+          onSaveReusableBlock={onSaveReusableBlock}
+          onDeleteReusableBlock={onDeleteReusableBlock}
+        />
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Workout blocks
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={onExpandAllSteps} className={buttonClassName()}>
+                Expand all
+              </button>
+              <button type="button" onClick={onCollapseAllSteps} className={buttonClassName()}>
+                Collapse all
+              </button>
+            </div>
+          </div>
+
+          <WorkoutDropJointComponent
+            containerId="root"
+            index={0}
+            active={isDropJointActive(activeDropJoint, "root", 0)}
+            disabled={getDropJointDisabled({ containerId: "root", index: 0 })}
+          />
+          {workout.blocks.map((step, index) => (
+            <div key={step.id}>
+              <StepEditor
+                ftp={workout.ftp}
+                step={step}
+                depth={0}
+                index={index}
+                siblingCount={workout.blocks.length}
+                selected={selectedStep?.id === step.id || selectedStepId === step.id}
+                selectedStepId={selectedStepId}
+                activeDraggedStepId={activeDragStep?.id}
+                activeDropJoint={activeDropJoint}
+                collapsedStepIds={collapsedStepIds}
+                onSelect={onSelectStep}
+                onToggleCollapsedStep={onToggleCollapsedStep}
+                onPruneCollapsedSteps={onPruneCollapsedSteps}
+                getDropJointDisabled={getDropJointDisabled}
+                onChange={(updatedStep) =>
+                  updateWorkout({
+                    blocks: updateStepById(workout.blocks, updatedStep.id, () => updatedStep),
+                  })
+                }
+                onMove={(fromIndex, toIndex) =>
+                  updateWorkout({ blocks: moveItem(workout.blocks, fromIndex, toIndex) })
+                }
+                onDuplicate={(stepToDuplicate, duplicateIndex) => {
+                  const nextBlocks = [...workout.blocks];
+                  const duplicated = duplicateStep(stepToDuplicate);
+                  nextBlocks.splice(duplicateIndex + 1, 0, duplicated);
+                  updateWorkout({ blocks: nextBlocks });
+                  onSelectStep(duplicated.id);
+                }}
+                onSaveBlock={openSaveBlockModal}
+                onDelete={(stepId) => {
+                  const nextBlocks = removeStepById(workout.blocks, stepId);
+                  updateWorkout({ blocks: nextBlocks });
+                  if (selectedStepId === stepId) onSelectStep(undefined);
+                }}
+                validationIssues={validationIssues}
+              />
+              <WorkoutDropJointComponent
+                containerId="root"
+                index={index + 1}
+                active={isDropJointActive(activeDropJoint, "root", index + 1)}
+                disabled={getDropJointDisabled({ containerId: "root", index: index + 1 })}
+              />
+            </div>
           ))}
         </div>
-      </div>
 
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Workout blocks
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={onExpandAllSteps} className={buttonClassName()}>
-              Expand all
-            </button>
-            <button type="button" onClick={onCollapseAllSteps} className={buttonClassName()}>
-              Collapse all
-            </button>
-          </div>
-        </div>
-
-        {workout.blocks.map((step, index) => (
-          <StepEditor
-            key={step.id}
-            ftp={workout.ftp}
-            step={step}
-            depth={0}
-            index={index}
-            siblingCount={workout.blocks.length}
-            selected={selectedStep?.id === step.id || selectedStepId === step.id}
-            selectedStepId={selectedStepId}
-            collapsedStepIds={collapsedStepIds}
-            onSelect={onSelectStep}
-            onToggleCollapsedStep={onToggleCollapsedStep}
-            onPruneCollapsedSteps={onPruneCollapsedSteps}
-            onChange={(updatedStep) =>
-              updateWorkout({
-                blocks: updateStepById(workout.blocks, updatedStep.id, () => updatedStep),
-              })
-            }
-            onMove={(fromIndex, toIndex) =>
-              updateWorkout({ blocks: moveItem(workout.blocks, fromIndex, toIndex) })
-            }
-            onDuplicate={(stepToDuplicate, duplicateIndex) => {
-              const nextBlocks = [...workout.blocks];
-              const duplicated = duplicateStep(stepToDuplicate);
-              nextBlocks.splice(duplicateIndex + 1, 0, duplicated);
-              updateWorkout({ blocks: nextBlocks });
-              onSelectStep(duplicated.id);
-            }}
-            onDelete={(stepId) => {
-              const nextBlocks = removeStepById(workout.blocks, stepId);
-              updateWorkout({ blocks: nextBlocks });
-              if (selectedStepId === stepId) onSelectStep(undefined);
-            }}
-            validationIssues={validationIssues}
-          />
-        ))}
-      </div>
+        <DragOverlay>
+          {activeDragBlock ? (
+            <div className="w-64 rounded-lg border border-cyan-300 bg-slate-950 p-3 shadow-xl">
+              <p className="truncate text-sm font-semibold text-slate-100">{activeDragBlock.name}</p>
+              <p className="mt-1 text-xs text-slate-400">
+                {activeDragBlock.source === "system" ? "Starter" : "Custom"} · {activeDragBlock.category}
+              </p>
+            </div>
+          ) : null}
+          {activeDragStep ? (
+            <div className="w-72 rounded-lg border border-cyan-300 bg-slate-950 p-3 shadow-xl">
+              <p className="truncate text-sm font-semibold text-slate-100">{activeDragStep.label}</p>
+              <p className="mt-1 text-xs text-slate-400">{activeDragStep.type}</p>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       <CueEditor
         cues={workout.cues ?? []}
         validationIssues={workoutCueIssues}
         onChange={(cues) => updateWorkout({ cues })}
+      />
+
+      <ReusableBlockEditorModal
+        isOpen={saveBlockModalState !== undefined}
+        mode={saveBlockModalState?.mode ?? "save-workout-block"}
+        initialBlock={saveBlockModalState?.block}
+        onClose={() => setSaveBlockModalState(undefined)}
+        onSave={(block) => {
+          onSaveReusableBlock(block);
+          setSaveBlockModalState(undefined);
+        }}
       />
     </section>
   );

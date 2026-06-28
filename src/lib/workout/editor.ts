@@ -1,5 +1,22 @@
 import { createId } from "./math";
+import { systemReusableBlocks } from "./reusableBlocks";
 import type { TargetMode, Workout, WorkoutStep, WorkoutStepType } from "./types";
+
+export type WorkoutStepContainerId = "root" | string;
+
+export interface WorkoutStepLocation {
+  containerId: WorkoutStepContainerId;
+  index: number;
+}
+
+export interface WorkoutDropJoint {
+  containerId: WorkoutStepContainerId;
+  index: number;
+}
+
+export type DraggedWorkoutItem =
+  | { kind: "library-block"; reusableBlockId: string }
+  | { kind: "workout-step"; stepId: string };
 
 export type BlockTemplateId =
   | "warmup-ramp"
@@ -33,77 +50,38 @@ function singleStep(type: WorkoutStepType, label: string, durationSeconds: numbe
   };
 }
 
-function rampStep(
-  type: Extract<WorkoutStepType, "warmup" | "cooldown" | "steady">,
-  label: string,
-  durationSeconds: number,
-  startPercentFTP: number,
-  endPercentFTP: number,
-): WorkoutStep {
+export function createBlockFromTemplate(templateId: BlockTemplateId): WorkoutStep {
+  const systemBlockId = `system-${templateId}`;
+  const reusableBlock = systemReusableBlocks.find((block) => block.id === systemBlockId);
+
+  if (reusableBlock) {
+    return cloneStepWithNewIds(reusableBlock.block);
+  }
+
   return {
-    id: createId(type),
-    type,
-    label,
-    targetMode: "ramp",
-    durationSeconds,
-    startPercentFTP,
-    endPercentFTP,
+    id: createId("repeat"),
+    type: "repeat",
+    label: "Two-step repeat",
+    repeatCount: 4,
+    children: [
+      singleStep("steady", "Work", 60, 105),
+      singleStep("recovery", "Recover", 60, 50),
+    ],
   };
 }
 
-export function createBlockFromTemplate(templateId: BlockTemplateId): WorkoutStep {
-  switch (templateId) {
-    case "warmup-ramp":
-      return rampStep("warmup", "Warmup ramp", 10 * 60, 45, 75);
-    case "cooldown-ramp":
-      return rampStep("cooldown", "Cooldown ramp", 8 * 60, 60, 35);
-    case "steady":
-      return singleStep("steady", "Steady interval", 5 * 60, 85);
-    case "recovery":
-      return singleStep("recovery", "Recovery", 3 * 60, 45);
-    case "ramp-up":
-      return rampStep("steady", "Ramp up", 6 * 60, 70, 95);
-    case "ramp-down":
-      return rampStep("steady", "Ramp down", 6 * 60, 95, 70);
-    case "three-step-repeat":
-      return {
-        id: createId("repeat"),
-        type: "repeat",
-        label: "Three-step repeat",
-        repeatCount: 3,
-        children: [
-          singleStep("steady", "Build", 60, 90),
-          singleStep("steady", "Hard", 60, 110),
-          singleStep("recovery", "Recover", 120, 50),
-        ],
-      };
-    case "two-step-repeat":
-    default:
-      return {
-        id: createId("repeat"),
-        type: "repeat",
-        label: "Two-step repeat",
-        repeatCount: 4,
-        children: [
-          singleStep("steady", "Work", 60, 105),
-          singleStep("recovery", "Recover", 60, 50),
-        ],
-      };
-  }
-}
-
-function rekeyStep(step: WorkoutStep): WorkoutStep {
+export function cloneStepWithNewIds(step: WorkoutStep): WorkoutStep {
   return {
-    ...step,
+    ...structuredClone(step),
     id: createId(step.type),
     cues: step.cues?.map((cue) => ({ ...cue, id: createId("cue") })),
-    children: step.children?.map(rekeyStep),
+    children: step.children?.map(cloneStepWithNewIds),
   };
 }
 
 export function duplicateStep(step: WorkoutStep): WorkoutStep {
   return {
-    ...rekeyStep(step),
+    ...cloneStepWithNewIds(step),
     label: `${step.label} copy`,
   };
 }
@@ -117,6 +95,166 @@ export function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[]
   const [item] = next.splice(fromIndex, 1);
   next.splice(Math.min(toIndex, next.length), 0, item);
   return next;
+}
+
+function getStepChildren(blocks: WorkoutStep[], containerId: WorkoutStepContainerId): WorkoutStep[] | undefined {
+  if (containerId === "root") return blocks;
+
+  const container = findStepById(blocks, containerId);
+  return container?.type === "repeat" ? (container.children ?? []) : undefined;
+}
+
+function clampInsertIndex(items: WorkoutStep[], index: number): number {
+  return Math.min(Math.max(0, index), items.length);
+}
+
+function locationEquals(a: WorkoutStepLocation, b: WorkoutStepLocation): boolean {
+  return a.containerId === b.containerId && a.index === b.index;
+}
+
+function updateRepeatChildren(
+  steps: WorkoutStep[],
+  containerId: string,
+  updater: (children: WorkoutStep[]) => WorkoutStep[],
+): WorkoutStep[] {
+  return steps.map((step) => {
+    if (step.id === containerId && step.type === "repeat") {
+      return { ...step, children: updater(step.children ?? []) };
+    }
+
+    if (step.children) {
+      return {
+        ...step,
+        children: updateRepeatChildren(step.children, containerId, updater),
+      };
+    }
+
+    return step;
+  });
+}
+
+function hasDescendantStepId(step: WorkoutStep, stepId: string): boolean {
+  return (step.children ?? []).some(
+    (child) => child.id === stepId || hasDescendantStepId(child, stepId),
+  );
+}
+
+function findContainerStep(blocks: WorkoutStep[], containerId: WorkoutStepContainerId): WorkoutStep | undefined {
+  return containerId === "root" ? undefined : findStepById(blocks, containerId);
+}
+
+function isCurrentLocationAllowedToMove(blocks: WorkoutStep[], step: WorkoutStep, to: WorkoutStepLocation): boolean {
+  const from = findStepLocation(blocks, step.id);
+  if (!from) return true;
+  if (from.containerId === to.containerId) return true;
+  if (from.containerId === "root") return true;
+
+  const siblings = getStepChildren(blocks, from.containerId);
+  return (siblings?.length ?? 0) > 1;
+}
+
+export function insertStepAtLocation(
+  blocks: WorkoutStep[],
+  location: WorkoutStepLocation,
+  step: WorkoutStep,
+): WorkoutStep[] {
+  if (location.containerId === "root") {
+    const next = [...blocks];
+    next.splice(clampInsertIndex(next, location.index), 0, step);
+    return next;
+  }
+
+  return updateRepeatChildren(blocks, location.containerId, (children) => {
+    const next = [...children];
+    next.splice(clampInsertIndex(next, location.index), 0, step);
+    return next;
+  });
+}
+
+export function removeStepAtLocation(
+  blocks: WorkoutStep[],
+  location: WorkoutStepLocation,
+): { blocks: WorkoutStep[]; removed?: WorkoutStep } {
+  if (location.containerId === "root") {
+    if (location.index < 0 || location.index >= blocks.length) {
+      return { blocks };
+    }
+
+    const next = [...blocks];
+    const [removed] = next.splice(location.index, 1);
+    return { blocks: next, removed };
+  }
+
+  let removed: WorkoutStep | undefined;
+  const nextBlocks = updateRepeatChildren(blocks, location.containerId, (children) => {
+    if (location.index < 0 || location.index >= children.length) return children;
+
+    const next = [...children];
+    [removed] = next.splice(location.index, 1);
+    return next;
+  });
+
+  return { blocks: nextBlocks, removed };
+}
+
+export function moveStepToLocation(
+  blocks: WorkoutStep[],
+  from: WorkoutStepLocation,
+  to: WorkoutStepLocation,
+): WorkoutStep[] {
+  const sourceContainer = getStepChildren(blocks, from.containerId);
+  const movingStep = sourceContainer?.[from.index];
+
+  if (!movingStep || !canDropStepAtLocation(blocks, movingStep, to)) return blocks;
+
+  const normalizedTo =
+    from.containerId === to.containerId && to.index > from.index
+      ? { ...to, index: to.index - 1 }
+      : to;
+
+  if (locationEquals(from, normalizedTo)) return blocks;
+
+  const removed = removeStepAtLocation(blocks, from);
+  if (!removed.removed) return blocks;
+
+  return insertStepAtLocation(removed.blocks, normalizedTo, removed.removed);
+}
+
+export function findStepLocation(
+  blocks: WorkoutStep[],
+  stepId: string,
+): WorkoutStepLocation | undefined {
+  for (const [index, step] of blocks.entries()) {
+    if (step.id === stepId) return { containerId: "root", index };
+
+    for (const [childIndex, child] of (step.children ?? []).entries()) {
+      if (child.id === stepId) return { containerId: step.id, index: childIndex };
+
+      const descendant = findStepLocation([child], stepId);
+      if (descendant) return descendant;
+    }
+  }
+
+  return undefined;
+}
+
+export function canDropStepAtLocation(
+  blocks: WorkoutStep[],
+  step: WorkoutStep,
+  location: WorkoutStepLocation,
+): boolean {
+  const container = getStepChildren(blocks, location.containerId);
+  if (!container) return false;
+  if (location.index < 0 || location.index > container.length) return false;
+  if (step.type === "repeat" && location.containerId !== "root") return false;
+  if (!isCurrentLocationAllowedToMove(blocks, step, location)) return false;
+
+  const destinationContainer = findContainerStep(blocks, location.containerId);
+  if (destinationContainer && hasDescendantStepId(step, destinationContainer.id)) {
+    return false;
+  }
+
+  return true;
 }
 
 export function updateStepById(

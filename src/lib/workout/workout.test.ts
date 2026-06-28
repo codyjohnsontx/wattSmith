@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import { scienceNotes } from "../science/notes";
 import { getScienceSource } from "../science/sources";
 import { defaultWorkout } from "./defaultWorkout";
-import { createBlockFromTemplate, moveItem } from "./editor";
+import {
+  canDropStepAtLocation,
+  createBlockFromTemplate,
+  findStepLocation,
+  insertStepAtLocation,
+  moveItem,
+  moveStepToLocation,
+} from "./editor";
 import { exportWorkoutToErg } from "./exportErg";
 import { exportWorkoutToMrc } from "./exportMrc";
 import {
@@ -15,7 +22,7 @@ import { calculateWorkoutSummary } from "./summary";
 import { defaultProfile } from "./storage";
 import { validateWorkout } from "./validation";
 import { getProfileWarnings } from "./warnings";
-import type { ExportRangeStrategy, Workout } from "./types";
+import type { ExportRangeStrategy, Workout, WorkoutStep } from "./types";
 
 function buildChecklist(
   workout: Workout,
@@ -36,6 +43,27 @@ function readinessItem(items: ExportReadinessItem[], id: string): ExportReadines
   const item = items.find((candidate) => candidate.id === id);
   expect(item).toBeDefined();
   return item as ExportReadinessItem;
+}
+
+function steadyStep(id: string, label = id): WorkoutStep {
+  return {
+    id,
+    type: "steady",
+    label,
+    targetMode: "single",
+    durationSeconds: 60,
+    targetPercentFTP: 80,
+  };
+}
+
+function repeatStep(id: string, children: WorkoutStep[]): WorkoutStep {
+  return {
+    id,
+    type: "repeat",
+    label: id,
+    repeatCount: 2,
+    children,
+  };
 }
 
 describe("workout helpers", () => {
@@ -258,6 +286,96 @@ describe("workout helpers", () => {
 
   it("moves blocks without losing items", () => {
     expect(moveItem(["a", "b", "c"], 0, 2)).toEqual(["b", "c", "a"]);
+  });
+
+  it("inserts steps at root start, middle, and end", () => {
+    const blocks = [steadyStep("a"), steadyStep("c")];
+
+    expect(insertStepAtLocation(blocks, { containerId: "root", index: 0 }, steadyStep("start")).map((step) => step.id)).toEqual([
+      "start",
+      "a",
+      "c",
+    ]);
+    expect(insertStepAtLocation(blocks, { containerId: "root", index: 1 }, steadyStep("b")).map((step) => step.id)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+    expect(insertStepAtLocation(blocks, { containerId: "root", index: 2 }, steadyStep("end")).map((step) => step.id)).toEqual([
+      "a",
+      "c",
+      "end",
+    ]);
+  });
+
+  it("inserts steps into repeat children", () => {
+    const blocks = [repeatStep("repeat", [steadyStep("a"), steadyStep("c")])];
+    const next = insertStepAtLocation(blocks, { containerId: "repeat", index: 1 }, steadyStep("b"));
+
+    expect(next[0].children?.map((step) => step.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("reorders steps within root and normalizes later target indexes", () => {
+    const blocks = [steadyStep("a"), steadyStep("b"), steadyStep("c")];
+    const next = moveStepToLocation(blocks, { containerId: "root", index: 0 }, { containerId: "root", index: 3 });
+
+    expect(next.map((step) => step.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("reorders steps within repeat children", () => {
+    const blocks = [repeatStep("repeat", [steadyStep("a"), steadyStep("b"), steadyStep("c")])];
+    const next = moveStepToLocation(blocks, { containerId: "repeat", index: 2 }, { containerId: "repeat", index: 0 });
+
+    expect(next[0].children?.map((step) => step.id)).toEqual(["c", "a", "b"]);
+  });
+
+  it("moves non-repeat root blocks into repeats and repeat children back to root", () => {
+    const blocks = [steadyStep("root"), repeatStep("repeat", [steadyStep("child-a"), steadyStep("child-b")])];
+    const movedIntoRepeat = moveStepToLocation(
+      blocks,
+      { containerId: "root", index: 0 },
+      { containerId: "repeat", index: 1 },
+    );
+
+    expect(movedIntoRepeat.map((step) => step.id)).toEqual(["repeat"]);
+    expect(movedIntoRepeat[0].children?.map((step) => step.id)).toEqual(["child-a", "root", "child-b"]);
+
+    const movedToRoot = moveStepToLocation(
+      movedIntoRepeat,
+      { containerId: "repeat", index: 0 },
+      { containerId: "root", index: 1 },
+    );
+
+    expect(movedToRoot.map((step) => step.id)).toEqual(["repeat", "child-a"]);
+    expect(movedToRoot[0].children?.map((step) => step.id)).toEqual(["root", "child-b"]);
+  });
+
+  it("rejects dropping repeat blocks into repeat containers", () => {
+    const repeat = repeatStep("repeat-a", [steadyStep("child")]);
+    const blocks = [repeat, repeatStep("repeat-b", [steadyStep("other")])];
+
+    expect(canDropStepAtLocation(blocks, repeat, { containerId: "repeat-b", index: 0 })).toBe(false);
+  });
+
+  it("rejects moving the only repeat child out of its repeat", () => {
+    const child = steadyStep("only-child");
+    const blocks = [repeatStep("repeat", [child]), steadyStep("root")];
+
+    expect(canDropStepAtLocation(blocks, child, { containerId: "root", index: 1 })).toBe(false);
+    expect(moveStepToLocation(blocks, { containerId: "repeat", index: 0 }, { containerId: "root", index: 1 })).toBe(blocks);
+  });
+
+  it("returns the same structure for same-location moves", () => {
+    const blocks = [steadyStep("a"), steadyStep("b")];
+
+    expect(moveStepToLocation(blocks, { containerId: "root", index: 0 }, { containerId: "root", index: 1 })).toBe(blocks);
+  });
+
+  it("finds step locations in root and repeat containers", () => {
+    const blocks = [steadyStep("root"), repeatStep("repeat", [steadyStep("child")])];
+
+    expect(findStepLocation(blocks, "root")).toEqual({ containerId: "root", index: 0 });
+    expect(findStepLocation(blocks, "child")).toEqual({ containerId: "repeat", index: 0 });
   });
 
   it("resolves every science note source id", () => {
