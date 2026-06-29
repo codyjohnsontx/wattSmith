@@ -19,23 +19,18 @@ Wattsmith is a percentage-based cycling workout builder. The near-term goal is t
 - `.mrc` / `.erg` previews.
 - Basic profile fields and warnings.
 - Starter cited rationale/source registry.
-
-## Next Slice: Builder Trust
-
-- Undo/redo for workout edits.
+- Session-only undo/redo for workout edits.
+- Keyboard shortcuts for undo/redo.
 - Inline validation per workout/block/cue.
-- Keep builder validation aligned with export validation.
+- Builder validation aligned with export validation.
+- Builder Trust test coverage.
+- Reusable block library with protected starter blocks and user-created custom blocks.
+- Custom block manager for creating, editing, duplicating, deleting, and inserting workout blocks.
+- Save-from-workout flow for turning any block or repeat into a reusable component.
+- Snapshot insertion so reusable block edits do not mutate existing workouts.
+- Reusable block validation/export test coverage.
 
-## P0: Builder Presets
-
-- Add block presets:
-  - Warmup ramp
-  - Cooldown ramp
-  - Endurance steady
-  - Sweet spot interval
-  - Threshold over/under
-  - VO2 30/15
-  - Sprint/anaerobic set
+## Next Slice: Library Polish
 
 ## P0: Improve The Workout Library
 
@@ -99,6 +94,7 @@ Do not start this until the manual builder and rationale system are stronger.
 
 ## Recommended Next Slice
 
-1. Undo/redo for workout edits.
-2. Inline validation per workout/block/cue.
-3. Keep builder validation aligned with export validation.
+1. Add library sort by duration, category, and difficulty.
+2. Add favorite/starred workouts.
+3. Add recently edited workouts.
+4. Strengthen saved/template empty states.

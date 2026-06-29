@@ -8,6 +8,7 @@ import { WorkoutLibrary } from "@/components/WorkoutLibrary";
 import { WorkoutSummary } from "@/components/WorkoutSummary";
 import { cloneDefaultWorkout } from "@/lib/workout/defaultWorkout";
 import { createBlockFromTemplate } from "@/lib/workout/editor";
+import { systemReusableBlocks } from "@/lib/workout/reusableBlocks";
 import {
   canRedoWorkoutHistory,
   canUndoWorkoutHistory,
@@ -19,17 +20,21 @@ import {
 } from "@/lib/workout/history";
 import { clampNumber, createId, percentToWatts } from "@/lib/workout/math";
 import {
+  deleteReusableBlock,
   deleteWorkout,
   defaultProfile,
   loadIntegrationConnections,
   loadProfile,
+  loadReusableBlocks,
   loadWorkouts,
+  saveReusableBlock,
   saveProfile,
   saveWorkout,
 } from "@/lib/workout/storage";
 import type {
   AthleteProfile,
   IntegrationConnection,
+  ReusableWorkoutBlock,
   Workout,
   WorkoutStep,
 } from "@/lib/workout/types";
@@ -93,6 +98,7 @@ export default function Home() {
     createWorkoutHistory(cloneDefaultWorkout()),
   );
   const [savedWorkouts, setSavedWorkouts] = useState<Workout[]>([]);
+  const [customReusableBlocks, setCustomReusableBlocks] = useState<ReusableWorkoutBlock[]>([]);
   const [profile, setProfile] = useState<AthleteProfile>(defaultProfile);
   const [integrations, setIntegrations] = useState<IntegrationConnection[]>([]);
   const [selectedStepId, setSelectedStepId] = useState<string | undefined>("warmup");
@@ -169,6 +175,7 @@ export default function Home() {
       const storedWorkouts = loadWorkouts();
       setProfile(storedProfile);
       setSavedWorkouts(storedWorkouts);
+      setCustomReusableBlocks(loadReusableBlocks());
       setIntegrations(loadIntegrationConnections());
 
       if (storedWorkouts[0]) {
@@ -225,6 +232,10 @@ export default function Home() {
 
   const profileWarnings = useMemo(() => getProfileWarnings(profile, workout), [profile, workout]);
   const validationIssues = useMemo(() => validateWorkout(workout), [workout]);
+  const reusableBlocks = useMemo(
+    () => [...customReusableBlocks, ...systemReusableBlocks],
+    [customReusableBlocks],
+  );
 
   const toggleCollapsedStep = (stepId: string) => {
     setCollapsedStepIds((current) => {
@@ -278,6 +289,18 @@ export default function Home() {
       replaceActiveWorkout(nextWorkout);
     }
     flashStatus("Deleted workout");
+  };
+
+  const handleSaveReusableBlock = (block: ReusableWorkoutBlock) => {
+    const nextBlocks = saveReusableBlock(block);
+    setCustomReusableBlocks(nextBlocks);
+    flashStatus("Saved reusable block");
+  };
+
+  const handleDeleteReusableBlock = (id: string) => {
+    const nextBlocks = deleteReusableBlock(id);
+    setCustomReusableBlocks(nextBlocks);
+    flashStatus("Deleted reusable block");
   };
 
   const handleProfileChange = (nextProfile: AthleteProfile) => {
@@ -419,6 +442,9 @@ export default function Home() {
               onPruneCollapsedSteps={pruneCollapsedSteps}
               onChange={updateWorkout}
               validationIssues={validationIssues}
+              reusableBlocks={reusableBlocks}
+              onSaveReusableBlock={handleSaveReusableBlock}
+              onDeleteReusableBlock={handleDeleteReusableBlock}
             />
             <div className="space-y-6">
               <WorkoutChart

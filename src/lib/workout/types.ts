@@ -16,6 +16,18 @@ export type WorkoutCategory =
   | "vo2"
   | "anaerobic";
 
+export type ReusableBlockCategory =
+  | "warmup"
+  | "cooldown"
+  | "recovery"
+  | "endurance"
+  | "tempo"
+  | "sweet-spot"
+  | "threshold"
+  | "vo2"
+  | "anaerobic"
+  | "general";
+
 export type ExportRangeStrategy = "low" | "midpoint" | "high";
 
 export interface Workout {
@@ -45,6 +57,18 @@ export interface WorkoutStep {
   repeatCount?: number;
   children?: WorkoutStep[];
   cues?: WorkoutCue[];
+}
+
+export interface ReusableWorkoutBlock {
+  id: string;
+  name: string;
+  category: ReusableBlockCategory;
+  notes?: string;
+  tags?: string[];
+  source: "system" | "user";
+  block: WorkoutStep;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface WorkoutCue {

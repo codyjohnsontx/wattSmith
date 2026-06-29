@@ -1,9 +1,18 @@
-import type { AthleteProfile, IntegrationConnection, Workout } from "./types";
+import type {
+  AthleteProfile,
+  IntegrationConnection,
+  ReusableBlockCategory,
+  ReusableWorkoutBlock,
+  TargetMode,
+  Workout,
+  WorkoutStep,
+} from "./types";
 
 export const LEGACY_WORKOUTS_STORAGE_KEY = "wattsmith.workouts.v1";
 export const WORKOUTS_STORAGE_KEY = "wattsmith.workouts.v2";
 export const PROFILE_STORAGE_KEY = "wattsmith.profile.v1";
 export const INTEGRATIONS_STORAGE_KEY = "wattsmith.integrations.v1";
+export const REUSABLE_BLOCKS_STORAGE_KEY = "wattsmith.reusableBlocks.v1";
 
 export const defaultProfile: AthleteProfile = {
   id: "local-athlete",
@@ -26,6 +35,20 @@ export const defaultIntegrationConnections: IntegrationConnection[] = [
 const experienceLevels = ["new", "recreational", "serious", "competitive", "elite"];
 const integrationProviders = ["strava", "garmin", "trainingpeaks"];
 const integrationStatuses = ["not_connected", "connected", "expired"];
+const reusableBlockCategories: ReusableBlockCategory[] = [
+  "warmup",
+  "cooldown",
+  "recovery",
+  "endurance",
+  "tempo",
+  "sweet-spot",
+  "threshold",
+  "vo2",
+  "anaerobic",
+  "general",
+];
+const workoutStepTypes = ["warmup", "cooldown", "steady", "repeat", "recovery"];
+const targetModes: TargetMode[] = ["single", "range", "ramp"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -33,6 +56,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function inferTargetMode(step: WorkoutStep): TargetMode {
+  return (
+    step.targetMode ??
+    (step.startPercentFTP !== undefined || step.endPercentFTP !== undefined
+      ? "ramp"
+      : step.minPercentFTP !== undefined || step.maxPercentFTP !== undefined
+        ? "range"
+        : "single")
+  );
+}
+
+function withStepDefaults(step: WorkoutStep): WorkoutStep {
+  return {
+    ...step,
+    targetMode: step.type === "repeat" ? step.targetMode : inferTargetMode(step),
+    children: step.children?.map(withStepDefaults),
+  };
 }
 
 function isAthleteProfile(value: unknown): value is AthleteProfile {
@@ -74,27 +116,118 @@ function withWorkoutDefaults(workout: Workout): Workout {
     ...workout,
     category: workout.category ?? "vo2",
     cues: workout.cues ?? [],
-    blocks: workout.blocks.map((block) => ({
-      ...block,
-      targetMode:
-        block.targetMode ??
-        (block.startPercentFTP !== undefined || block.endPercentFTP !== undefined
-          ? "ramp"
-          : block.minPercentFTP !== undefined || block.maxPercentFTP !== undefined
-            ? "range"
-            : "single"),
-      children: block.children?.map((child) => ({
-        ...child,
-        targetMode:
-          child.targetMode ??
-          (child.startPercentFTP !== undefined || child.endPercentFTP !== undefined
-            ? "ramp"
-            : child.minPercentFTP !== undefined || child.maxPercentFTP !== undefined
-              ? "range"
-              : "single"),
-      })),
-    })),
+    blocks: workout.blocks.map(withStepDefaults),
   };
+}
+
+function isWorkoutStep(value: unknown): value is WorkoutStep {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.type !== "string" ||
+    !workoutStepTypes.includes(value.type) ||
+    typeof value.label !== "string"
+  ) {
+    return false;
+  }
+
+  const optionalNumberFields = [
+    "durationSeconds",
+    "targetPercentFTP",
+    "startPercentFTP",
+    "endPercentFTP",
+    "minPercentFTP",
+    "maxPercentFTP",
+    "repeatCount",
+  ];
+
+  for (const field of optionalNumberFields) {
+    const fieldValue = value[field];
+    if (
+      fieldValue !== undefined &&
+      (typeof fieldValue !== "number" || !Number.isFinite(fieldValue))
+    ) {
+      return false;
+    }
+  }
+
+  if (
+    value.cues !== undefined &&
+    (!Array.isArray(value.cues) ||
+      !value.cues.every(
+        (cue) =>
+          isRecord(cue) &&
+          typeof cue.id === "string" &&
+          typeof cue.text === "string" &&
+          typeof cue.atSeconds === "number" &&
+          Number.isFinite(cue.atSeconds) &&
+          typeof cue.durationSeconds === "number" &&
+          Number.isFinite(cue.durationSeconds),
+      ))
+  ) {
+    return false;
+  }
+
+  if (
+    value.targetMode !== undefined &&
+    (typeof value.targetMode !== "string" || !targetModes.includes(value.targetMode as TargetMode))
+  ) {
+    return false;
+  }
+
+  if (value.children !== undefined) {
+    return Array.isArray(value.children) && value.children.every(isWorkoutStep);
+  }
+
+  return true;
+}
+
+export function isReusableWorkoutBlock(value: unknown): value is ReusableWorkoutBlock {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.category === "string" &&
+    reusableBlockCategories.includes(value.category as ReusableBlockCategory) &&
+    (value.notes === undefined || typeof value.notes === "string") &&
+    (value.tags === undefined || isStringArray(value.tags)) &&
+    value.source === "user" &&
+    isWorkoutStep(value.block) &&
+    typeof value.createdAt === "string" &&
+    typeof value.updatedAt === "string"
+  );
+}
+
+export function withReusableBlockDefaults(block: ReusableWorkoutBlock): ReusableWorkoutBlock {
+  return {
+    ...block,
+    notes: block.notes ?? "",
+    tags: block.tags ?? [],
+    block: withStepDefaults(block.block),
+  };
+}
+
+function safeReusableBlockDefaults(value: unknown): ReusableWorkoutBlock | undefined {
+  try {
+    if (!isReusableWorkoutBlock(value)) {
+      throw new Error("Reusable block is malformed or not user-owned.");
+    }
+
+    return withReusableBlockDefaults(value);
+  } catch (error) {
+    console.warn("Skipping malformed reusable block from localStorage", error);
+    return undefined;
+  }
+}
+
+export function normalizeReusableBlocks(value: unknown): ReusableWorkoutBlock[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(safeReusableBlockDefaults)
+    .filter((block): block is ReusableWorkoutBlock => block !== undefined);
 }
 
 function safeWorkoutDefaults(value: unknown): Workout | undefined {
@@ -160,6 +293,59 @@ export function saveWorkout(workout: Workout): Workout[] {
 export function deleteWorkout(id: string): Workout[] {
   const next = loadWorkouts().filter((workout) => workout.id !== id);
   window.localStorage.setItem(WORKOUTS_STORAGE_KEY, JSON.stringify(next));
+  return next;
+}
+
+export function loadReusableBlocks(): ReusableWorkoutBlock[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(REUSABLE_BLOCKS_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    return normalizeReusableBlocks(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+
+function persistReusableBlocks(blocks: ReusableWorkoutBlock[]): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(REUSABLE_BLOCKS_STORAGE_KEY, JSON.stringify(blocks));
+  } catch (error) {
+    console.warn("Unable to save reusable blocks to localStorage", error);
+  }
+}
+
+export function saveReusableBlock(block: ReusableWorkoutBlock): ReusableWorkoutBlock[] {
+  const existing = loadReusableBlocks();
+  if (block.source !== "user") {
+    return existing;
+  }
+
+  const timestamp = new Date().toISOString();
+  const nextBlock = withReusableBlockDefaults({
+    ...block,
+    createdAt: block.createdAt || timestamp,
+    updatedAt: timestamp,
+  });
+  const next = existing.some((item) => item.id === nextBlock.id)
+    ? existing.map((item) => (item.id === nextBlock.id ? nextBlock : item))
+    : [nextBlock, ...existing];
+
+  persistReusableBlocks(next);
+  return next;
+}
+
+export function deleteReusableBlock(id: string): ReusableWorkoutBlock[] {
+  const next = loadReusableBlocks().filter((block) => block.id !== id);
+  persistReusableBlocks(next);
   return next;
 }
 
