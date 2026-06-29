@@ -313,6 +313,16 @@ export function loadReusableBlocks(): ReusableWorkoutBlock[] {
   }
 }
 
+function persistReusableBlocks(blocks: ReusableWorkoutBlock[]): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(REUSABLE_BLOCKS_STORAGE_KEY, JSON.stringify(blocks));
+  } catch (error) {
+    console.warn("Unable to save reusable blocks to localStorage", error);
+  }
+}
+
 export function saveReusableBlock(block: ReusableWorkoutBlock): ReusableWorkoutBlock[] {
   const existing = loadReusableBlocks();
   if (block.source !== "user") {
@@ -329,13 +339,13 @@ export function saveReusableBlock(block: ReusableWorkoutBlock): ReusableWorkoutB
     ? existing.map((item) => (item.id === nextBlock.id ? nextBlock : item))
     : [nextBlock, ...existing];
 
-  window.localStorage.setItem(REUSABLE_BLOCKS_STORAGE_KEY, JSON.stringify(next));
+  persistReusableBlocks(next);
   return next;
 }
 
 export function deleteReusableBlock(id: string): ReusableWorkoutBlock[] {
   const next = loadReusableBlocks().filter((block) => block.id !== id);
-  window.localStorage.setItem(REUSABLE_BLOCKS_STORAGE_KEY, JSON.stringify(next));
+  persistReusableBlocks(next);
   return next;
 }
 

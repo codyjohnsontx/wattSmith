@@ -9,7 +9,8 @@ import type {
   WorkoutValidationIssue,
 } from "@/lib/workout/types";
 import { validateWorkout } from "@/lib/workout/validation";
-import { useMemo, useState } from "react";
+import type { KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export const reusableBlockCategories: { id: ReusableBlockCategory; label: string }[] = [
   { id: "warmup", label: "Warmup" },
@@ -40,6 +41,14 @@ function inputClassName() {
 
 function buttonClassName() {
   return "min-w-0 truncate rounded-md border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-cyan-300 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40";
+}
+
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true");
 }
 
 function createIntervalStep(
@@ -480,6 +489,8 @@ function ReusableBlockEditorDialog({
 }) {
   const [draft, setDraft] = useState<ReusableWorkoutBlock>(() => initialDraft);
   const [triedSave, setTriedSave] = useState(false);
+  const dialogRef = useRef<HTMLElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   const validationIssues = useMemo(() => {
     const issues: WorkoutValidationIssue[] = [];
@@ -520,6 +531,41 @@ function ReusableBlockEditorDialog({
   const hasErrors = validationIssues.some((issue) => issue.severity === "error");
   const rootType = draft.block.type;
 
+  useEffect(() => {
+    nameInputRef.current?.focus();
+  }, []);
+
+  const handleDialogKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (event.key !== "Tab" || !dialogRef.current) return;
+
+    const focusableElements = getFocusableElements(dialogRef.current);
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      dialogRef.current.focus();
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    if (event.shiftKey && document.activeElement === firstElement) {
+      event.preventDefault();
+      lastElement.focus();
+      return;
+    }
+
+    if (!event.shiftKey && document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  };
+
   const handleSave = () => {
     setTriedSave(true);
     if (hasErrors) return;
@@ -542,9 +588,12 @@ function ReusableBlockEditorDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/80 px-4 py-8 backdrop-blur-sm">
       <section
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="reusable-block-modal-title"
+        tabIndex={-1}
+        onKeyDown={handleDialogKeyDown}
         className="w-full max-w-4xl rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl"
       >
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 pb-4">
@@ -566,6 +615,7 @@ function ReusableBlockEditorDialog({
             <label className="block">
               <span className="text-xs font-medium text-slate-400">Name</span>
               <input
+                ref={nameInputRef}
                 value={draft.name}
                 onChange={(event) => {
                   const name = event.target.value;
