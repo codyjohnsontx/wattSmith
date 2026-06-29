@@ -376,6 +376,7 @@ export function ReusableBlockManager({
 
       <div className="mt-3">
         <input
+          aria-label="Search reusable blocks"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search blocks"

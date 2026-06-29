@@ -541,13 +541,18 @@ function ReusableBlockEditorDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/80 px-4 py-8 backdrop-blur-sm">
-      <section className="w-full max-w-4xl rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reusable-block-modal-title"
+        className="w-full max-w-4xl rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl"
+      >
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 pb-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">
               Reusable block
             </p>
-            <h2 className="mt-1 text-xl font-semibold text-white">
+            <h2 id="reusable-block-modal-title" className="mt-1 text-xl font-semibold text-white">
               {mode === "edit" ? "Edit custom block" : "Save custom block"}
             </h2>
           </div>
@@ -567,7 +572,15 @@ function ReusableBlockEditorDialog({
                   setDraft((current) => ({
                     ...current,
                     name,
-                    block: { ...current.block, label: current.block.label || name },
+                    block: {
+                      ...current.block,
+                      label:
+                        current.block.label.trim() === "" ||
+                        current.block.label === current.name ||
+                        current.block.label === "Custom block"
+                          ? name
+                          : current.block.label,
+                    },
                   }));
                 }}
                 className={inputClassName()}

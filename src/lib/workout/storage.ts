@@ -131,6 +131,43 @@ function isWorkoutStep(value: unknown): value is WorkoutStep {
     return false;
   }
 
+  const optionalNumberFields = [
+    "durationSeconds",
+    "targetPercentFTP",
+    "startPercentFTP",
+    "endPercentFTP",
+    "minPercentFTP",
+    "maxPercentFTP",
+    "repeatCount",
+  ];
+
+  for (const field of optionalNumberFields) {
+    const fieldValue = value[field];
+    if (
+      fieldValue !== undefined &&
+      (typeof fieldValue !== "number" || !Number.isFinite(fieldValue))
+    ) {
+      return false;
+    }
+  }
+
+  if (
+    value.cues !== undefined &&
+    (!Array.isArray(value.cues) ||
+      !value.cues.every(
+        (cue) =>
+          isRecord(cue) &&
+          typeof cue.id === "string" &&
+          typeof cue.text === "string" &&
+          typeof cue.atSeconds === "number" &&
+          Number.isFinite(cue.atSeconds) &&
+          typeof cue.durationSeconds === "number" &&
+          Number.isFinite(cue.durationSeconds),
+      ))
+  ) {
+    return false;
+  }
+
   if (
     value.targetMode !== undefined &&
     (typeof value.targetMode !== "string" || !targetModes.includes(value.targetMode as TargetMode))

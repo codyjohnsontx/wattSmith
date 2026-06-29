@@ -105,14 +105,46 @@ describe("reusable workout blocks", () => {
   });
 
   it("inserts reusable blocks as independent snapshots", () => {
-    const reusableBlock = structuredClone(systemReusableBlocks[0]);
+    const source = systemReusableBlocks.find((block) => block.id === "system-sweet-spot-interval");
+    expect(source).toBeDefined();
+
+    const reusableBlock = structuredClone(source as ReusableWorkoutBlock);
+    reusableBlock.block.cues = [
+      {
+        id: "source-cue",
+        atSeconds: 30,
+        text: "Hold form.",
+        durationSeconds: 10,
+      },
+    ];
+    if (reusableBlock.block.children?.[0]) {
+      reusableBlock.block.children[0].cues = [
+        {
+          id: "source-child-cue",
+          atSeconds: 15,
+          text: "Settle.",
+          durationSeconds: 5,
+        },
+      ];
+    }
+
     const inserted = cloneStepWithNewIds(reusableBlock.block);
 
     reusableBlock.block.label = "Changed library block";
-    reusableBlock.block.durationSeconds = 1;
+    reusableBlock.block.cues[0].text = "Changed cue.";
+    if (reusableBlock.block.children?.[0]) {
+      reusableBlock.block.children[0].label = "Changed child";
+      reusableBlock.block.children[0].durationSeconds = 1;
+      reusableBlock.block.children[0].cues![0].text = "Changed child cue.";
+    }
 
-    expect(inserted.label).toBe("Warmup ramp");
-    expect(inserted.durationSeconds).toBe(10 * 60);
+    expect(inserted.label).toBe("Sweet spot interval");
+    expect(inserted.cues?.[0].text).toBe("Hold form.");
+    expect(inserted.cues?.[0].id).not.toBe("source-cue");
+    expect(inserted.children?.[0]?.label).toBe("Sweet spot");
+    expect(inserted.children?.[0]?.durationSeconds).toBe(8 * 60);
+    expect(inserted.children?.[0]?.cues?.[0].text).toBe("Settle.");
+    expect(inserted.children?.[0]?.cues?.[0].id).not.toBe("source-child-cue");
   });
 
   it("skips malformed stored blocks and normalizes target modes", () => {
@@ -136,6 +168,16 @@ describe("reusable workout blocks", () => {
     const normalized = normalizeReusableBlocks([
       storedBlock,
       { ...storedBlock, id: "system", source: "system" },
+      {
+        ...storedBlock,
+        id: "bad-duration",
+        block: { ...storedBlock.block, durationSeconds: "60" },
+      },
+      {
+        ...storedBlock,
+        id: "bad-cues",
+        block: { ...storedBlock.block, cues: [{ id: "cue", atSeconds: null, text: "Go" }] },
+      },
       { id: "broken" },
     ]);
 

@@ -32,7 +32,7 @@ export function WorkoutDropJoint({
   });
 
   return (
-    <div ref={setNodeRef} className="py-1" aria-hidden={disabled}>
+    <div ref={setNodeRef} className="py-1" aria-hidden={!active || disabled}>
       <div
         className={`grid place-items-center overflow-hidden rounded-md border transition-all ${
           active
@@ -40,9 +40,11 @@ export function WorkoutDropJoint({
             : "h-2 border-transparent bg-transparent text-transparent"
         }`}
       >
-        <span className="text-[0.68rem] font-semibold uppercase tracking-[0.14em]">
-          Drop here
-        </span>
+        {active ? (
+          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.14em]">
+            Drop here
+          </span>
+        ) : null}
       </div>
     </div>
   );

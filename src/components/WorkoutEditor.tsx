@@ -215,7 +215,11 @@ function inferReusableBlockCategory(step: WorkoutStep): ReusableBlockCategory {
 
   const highestTarget = getHighestTargetPercent(step);
   if (highestTarget >= 130) return "anaerobic";
-  if (highestTarget >= 110) return "vo2";
+  if (highestTarget >= 106) return "vo2";
+  if (highestTarget >= 95) return "threshold";
+  if (highestTarget >= 88) return "sweet-spot";
+  if (highestTarget >= 76) return "tempo";
+  if (highestTarget >= 55) return "endurance";
 
   return "general";
 }
