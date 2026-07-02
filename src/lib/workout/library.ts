@@ -45,23 +45,27 @@ export function decorateWorkouts(workouts: Workout[]): LibraryWorkoutEntry[] {
   });
 }
 
+export function matchesLibraryFilter(
+  entry: LibraryWorkoutEntry,
+  { query, category, difficulty, favoritesOnly }: LibraryFilter,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  const matchesQuery =
+    normalizedQuery.length === 0 ||
+    `${entry.workout.name} ${entry.workout.description}`
+      .toLowerCase()
+      .includes(normalizedQuery);
+  const matchesCategory = category === "all" || entry.workout.category === category;
+  const matchesDifficulty = difficulty === "all" || entry.difficulty === difficulty;
+  const matchesFavorite = !favoritesOnly || entry.workout.favorite === true;
+  return matchesQuery && matchesCategory && matchesDifficulty && matchesFavorite;
+}
+
 export function filterLibraryEntries(
   entries: LibraryWorkoutEntry[],
-  { query, category, difficulty, favoritesOnly }: LibraryFilter,
+  filter: LibraryFilter,
 ): LibraryWorkoutEntry[] {
-  const normalizedQuery = query.trim().toLowerCase();
-
-  return entries.filter((entry) => {
-    const matchesQuery =
-      normalizedQuery.length === 0 ||
-      `${entry.workout.name} ${entry.workout.description}`
-        .toLowerCase()
-        .includes(normalizedQuery);
-    const matchesCategory = category === "all" || entry.workout.category === category;
-    const matchesDifficulty = difficulty === "all" || entry.difficulty === difficulty;
-    const matchesFavorite = !favoritesOnly || entry.workout.favorite === true;
-    return matchesQuery && matchesCategory && matchesDifficulty && matchesFavorite;
-  });
+  return entries.filter((entry) => matchesLibraryFilter(entry, filter));
 }
 
 const sortComparators: Record<

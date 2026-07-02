@@ -7,6 +7,7 @@ import { duplicateWorkout } from "@/lib/workout/editor";
 import {
   decorateWorkouts,
   filterLibraryEntries,
+  matchesLibraryFilter,
   sortLibraryEntries,
   sortOrderLabels,
   workoutSortOrders,
@@ -161,15 +162,13 @@ export function WorkoutLibrary({
       }),
     [activeFtp],
   );
-  const visibleTemplates = useMemo(() => {
-    const matches = new Set(
-      filterLibraryEntries(
-        templateEntries.map(({ entry }) => entry),
-        { query, category, difficulty, favoritesOnly: false },
+  const visibleTemplates = useMemo(
+    () =>
+      templateEntries.filter(({ entry }) =>
+        matchesLibraryFilter(entry, { query, category, difficulty, favoritesOnly: false }),
       ),
-    );
-    return templateEntries.filter(({ entry }) => matches.has(entry));
-  }, [templateEntries, query, category, difficulty]);
+    [templateEntries, query, category, difficulty],
+  );
 
   const hasActiveFilters =
     query.trim().length > 0 || category !== "all" || difficulty !== "all" || favoritesOnly;
