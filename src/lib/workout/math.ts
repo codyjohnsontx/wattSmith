@@ -30,6 +30,30 @@ export function formatDuration(seconds: number): string {
   return `${minutes}m`;
 }
 
+export function formatRelativeTime(iso: string, now = new Date()): string {
+  const elapsedMs = now.getTime() - new Date(iso).getTime();
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 60 * 1000) {
+    return "just now";
+  }
+
+  const minutes = Math.floor(elapsedMs / (60 * 1000));
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  if (days < 30) {
+    return `${days}d ago`;
+  }
+
+  return new Date(iso).toLocaleDateString();
+}
+
 export function formatClock(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;

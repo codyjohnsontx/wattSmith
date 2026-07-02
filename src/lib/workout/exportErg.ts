@@ -1,16 +1,17 @@
 import { flattenWorkout } from "./flatten";
 import { secondsToMinutes } from "./math";
 import { collectWorkoutCues } from "./cues";
-import { safeFileName } from "./exportMrc";
+import { resolveExportBaseFileName } from "./exportMrc";
 import type { ExportRangeStrategy, Workout } from "./types";
 
 export function exportWorkoutToErg(
   workout: Workout,
   rangeStrategy: ExportRangeStrategy = "midpoint",
+  baseFileName?: string,
 ): string {
   const segments = flattenWorkout(workout, rangeStrategy);
   const cues = collectWorkoutCues(workout);
-  const fileName = `${safeFileName(workout.name) || "wattsmith_workout"}.erg`.toLowerCase();
+  const fileName = `${resolveExportBaseFileName(workout, baseFileName)}.erg`.toLowerCase();
   const lines = [
     "[COURSE HEADER]",
     "VERSION = 2",

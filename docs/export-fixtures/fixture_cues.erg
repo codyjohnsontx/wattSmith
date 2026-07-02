@@ -1,0 +1,22 @@
+[COURSE HEADER]
+VERSION = 2
+UNITS = ENGLISH
+DESCRIPTION = Text cues that should appear as COURSE TEXT events.
+FILE NAME = fixture_cues.erg
+FTP = 200
+MINUTES	WATTS
+[END COURSE HEADER]
+[COURSE DATA]
+0.000	110
+5.000	110
+5.000	196
+20.000	196
+20.000	90
+25.000	90
+[END COURSE DATA]
+[COURSE TEXT]
+30	Settle into a smooth cadence	10
+360	Hold steady just under FTP	15
+750	Halfway there	10
+1260	Nice work, spin it out	10
+[END COURSE TEXT]
