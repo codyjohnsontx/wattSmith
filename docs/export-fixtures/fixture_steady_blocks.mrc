@@ -1,0 +1,15 @@
+[COURSE HEADER]
+VERSION = 2
+UNITS = ENGLISH
+DESCRIPTION = Back-to-back steady targets with no ramps or ranges.
+FILE NAME = fixture_steady_blocks.mrc
+MINUTES PERCENT
+[END COURSE HEADER]
+[COURSE DATA]
+0.000	80
+10.000	80
+10.000	50
+15.000	50
+15.000	85
+25.000	85
+[END COURSE DATA]

@@ -1,0 +1,12 @@
+[COURSE HEADER]
+VERSION = 2
+UNITS = ENGLISH
+DESCRIPTION = Name & description with accents, symbols — and emoji 🚴.
+FILE NAME = fixture_cafe_cremeux_1_60.erg
+FTP = 200
+MINUTES	WATTS
+[END COURSE HEADER]
+[COURSE DATA]
+0.000	110
+60.000	110
+[END COURSE DATA]

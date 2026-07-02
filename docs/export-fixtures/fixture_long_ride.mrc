@@ -1,0 +1,15 @@
+[COURSE HEADER]
+VERSION = 2
+UNITS = ENGLISH
+DESCRIPTION = Over four hours of endurance to exercise the long-workout warning.
+FILE NAME = fixture_long_ride.mrc
+MINUTES PERCENT
+[END COURSE HEADER]
+[COURSE DATA]
+0.000	45
+15.000	65
+15.000	65
+255.000	65
+255.000	45
+265.000	45
+[END COURSE DATA]

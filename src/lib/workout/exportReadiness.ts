@@ -1,4 +1,4 @@
-import { safeFileName } from "./exportMrc";
+import { resolveExportBaseFileName, safeFileName } from "./exportMrc";
 import { flattenWorkout } from "./flatten";
 import { formatDuration } from "./math";
 import type {
@@ -25,6 +25,7 @@ export interface ExportReadinessInput {
   summary: WorkoutSummary;
   mrc: string;
   erg: string;
+  baseFileName?: string;
 }
 
 function formatPercent(percent: number): string {
@@ -39,6 +40,36 @@ function hasCourseSections(preview: string): boolean {
   );
 }
 
+function buildFilenameItem(workout: Workout, baseFileName?: string): ExportReadinessItem {
+  const resolved = resolveExportBaseFileName(workout, baseFileName).toLowerCase();
+  const hasCustomName = baseFileName !== undefined && baseFileName.trim().length > 0;
+
+  if (hasCustomName && !safeFileName(baseFileName)) {
+    return {
+      id: "filename",
+      label: "Filename",
+      status: "warn",
+      message: `Custom filename has no usable characters; falling back to ${resolved}.`,
+    };
+  }
+
+  if (!hasCustomName && !safeFileName(workout.name)) {
+    return {
+      id: "filename",
+      label: "Filename",
+      status: "warn",
+      message: "Filename will use the fallback wattsmith_workout.",
+    };
+  }
+
+  return {
+    id: "filename",
+    label: "Filename",
+    status: "pass",
+    message: `Download filename is ${resolved}.mrc/.erg.`,
+  };
+}
+
 export function buildExportReadinessChecklist({
   workout,
   rangeStrategy,
@@ -46,6 +77,7 @@ export function buildExportReadinessChecklist({
   summary,
   mrc,
   erg,
+  baseFileName,
 }: ExportReadinessInput): ExportReadinessItem[] {
   const validationErrors = validationIssues.filter((issue) => issue.severity === "error");
   const validationWarnings = validationIssues.filter((issue) => issue.severity === "warning");
@@ -86,7 +118,6 @@ export function buildExportReadinessChecklist({
     ),
   );
   const hasRanges = segments.some((segment) => segment.targetMode === "range");
-  const filename = safeFileName(workout.name);
 
   return [
     validationItem,
@@ -164,18 +195,6 @@ export function buildExportReadinessChecklist({
           status: "error",
           message: "One or more export previews could not be generated.",
         },
-    filename
-      ? {
-          id: "filename",
-          label: "Filename",
-          status: "pass",
-          message: `Download filename is ${filename.toLowerCase()}.mrc/.erg.`,
-        }
-      : {
-          id: "filename",
-          label: "Filename",
-          status: "warn",
-          message: "Filename will use the fallback wattsmith_workout.",
-        },
+    buildFilenameItem(workout, baseFileName),
   ];
 }
