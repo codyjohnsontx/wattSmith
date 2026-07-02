@@ -58,7 +58,7 @@ function buildFilenameItem(workout: Workout, baseFileName?: string): ExportReadi
       id: "filename",
       label: "Filename",
       status: "warn",
-      message: "Filename will use the fallback wattsmith_workout.",
+      message: `Filename will use the fallback ${resolved}.`,
     };
   }
 

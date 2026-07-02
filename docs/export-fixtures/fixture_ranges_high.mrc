@@ -2,7 +2,7 @@
 VERSION = 2
 UNITS = ENGLISH
 DESCRIPTION = Range targets that exercise the low, midpoint, and high export strategies.
-FILE NAME = fixture_ranges.mrc
+FILE NAME = fixture_ranges_high.mrc
 MINUTES PERCENT
 [END COURSE HEADER]
 [COURSE DATA]

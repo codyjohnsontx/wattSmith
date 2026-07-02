@@ -7,6 +7,7 @@ import { duplicateWorkout } from "@/lib/workout/editor";
 import {
   decorateWorkouts,
   filterLibraryEntries,
+  matchesLibraryFilter,
   sortLibraryEntries,
   sortOrderLabels,
   workoutSortOrders,
@@ -143,22 +144,29 @@ export function WorkoutLibrary({
 
   const templateEntries = useMemo(
     () =>
-      workoutTemplates.map((template) => ({
-        template,
-        entry: decorateWorkouts([{ ...template.defaultWorkout, ftp: activeFtp }])[0],
-      })),
+      workoutTemplates.map((template) => {
+        const [decorated] = decorateWorkouts([{ ...template.defaultWorkout, ftp: activeFtp }]);
+        // Filter on the template-level name/description/category that the card
+        // actually shows, while keeping the summary/difficulty derived from the
+        // template's blocks.
+        const entry: LibraryWorkoutEntry = {
+          ...decorated,
+          workout: {
+            ...decorated.workout,
+            name: template.name,
+            description: template.description,
+            category: template.category,
+          },
+        };
+        return { template, entry };
+      }),
     [activeFtp],
   );
   const visibleTemplates = useMemo(
     () =>
-      templateEntries.filter(({ template, entry }) => {
-        const matchesQuery = `${template.name} ${template.description}`
-          .toLowerCase()
-          .includes(query.trim().toLowerCase());
-        const matchesCategory = category === "all" || template.category === category;
-        const matchesDifficulty = difficulty === "all" || entry.difficulty === difficulty;
-        return matchesQuery && matchesCategory && matchesDifficulty;
-      }),
+      templateEntries.filter(({ entry }) =>
+        matchesLibraryFilter(entry, { query, category, difficulty, favoritesOnly: false }),
+      ),
     [templateEntries, query, category, difficulty],
   );
 

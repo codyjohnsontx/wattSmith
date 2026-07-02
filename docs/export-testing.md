@@ -16,7 +16,7 @@ Manual verification that Wattsmith `.mrc` / `.erg` exports import correctly into
 
 Reproducible test files live in `docs/export-fixtures/`. Regenerate them after any export-code change:
 
-```
+```shell
 npm run generate:export-fixtures
 ```
 
@@ -26,7 +26,7 @@ Each fixture isolates one export feature (source data in `src/lib/workout/export
 | --- | --- |
 | `fixture_steady_blocks.*` | Plain steady/recovery targets |
 | `fixture_ramps.*` | Ramped warmup and cooldown |
-| `fixture_ranges_low/midpoint/high.*` | Range targets under each range-export strategy |
+| `fixture_ranges_low/midpoint/high.*` | Range targets under each range-export strategy. `generateExportFixtures.ts` writes each strategy to a `_low/_midpoint/_high`-suffixed file and passes that same suffixed base name into the exporter, so the embedded `FILE NAME =` header must match the on-disk filename — verify both. |
 | `fixture_repeats.*` | Repeat blocks with work/float children |
 | `fixture_cues.*` | Text cues as `[COURSE TEXT]` events |
 | `fixture_long_ride.*` | >4 hour workout (expected in-app timeline warning) |
@@ -46,6 +46,7 @@ Each fixture isolates one export feature (source data in `src/lib/workout/export
 6. Open the TrainerRoad app, refresh the workout library, and confirm the workout appears under Workouts > Custom and its chart still looks correct.
 7. Record the result in the matrix below.
 8. For the custom-filename row: in Wattsmith, set a custom file name on the Export tab, download both formats, and confirm the downloaded filename and the embedded `FILE NAME =` header both use the custom name.
+9. For the three range-strategy rows: open each `fixture_ranges_<strategy>.{mrc,erg}` file and confirm the embedded `FILE NAME =` header matches the on-disk filename (e.g. `fixture_ranges_low.mrc` contains `FILE NAME = fixture_ranges_low.mrc`), not the unsuffixed `fixture_ranges` name. This is the same header/filename consistency checked for the custom-filename row.
 
 ## Results Matrix
 

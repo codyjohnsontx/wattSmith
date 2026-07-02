@@ -70,6 +70,23 @@ describe("export test fixtures", () => {
     expect(exportWorkoutToMrc(rangeFixture!, "high")).toContain("0.000\t94");
   });
 
+  it("embeds the strategy-suffixed filename header for range fixtures", () => {
+    // Mirrors the naming produced by generateExportFixtures.ts so a mismatch
+    // between the on-disk filename and the embedded FILE NAME header is caught.
+    const rangeFixture = exportTestFixtures.find((fixture) => fixture.id === "fixture-ranges");
+    expect(rangeFixture).toBeDefined();
+
+    for (const strategy of ["low", "midpoint", "high"] as const) {
+      const baseName = `${safeFileName(rangeFixture!.name)}_${strategy}`;
+      expect(exportWorkoutToMrc(rangeFixture!, strategy, baseName)).toContain(
+        `FILE NAME = ${baseName.toLowerCase()}.mrc`,
+      );
+      expect(exportWorkoutToErg(rangeFixture!, strategy, baseName)).toContain(
+        `FILE NAME = ${baseName.toLowerCase()}.erg`,
+      );
+    }
+  });
+
   it("sanitizes the special-character fixture name into a usable filename", () => {
     const specialFixture = exportTestFixtures.find(
       (fixture) => fixture.id === "fixture-special-name",
