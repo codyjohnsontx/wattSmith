@@ -30,6 +30,7 @@ import {
   saveReusableBlock,
   saveProfile,
   saveWorkout,
+  toggleWorkoutFavorite,
 } from "@/lib/workout/storage";
 import type {
   AthleteProfile,
@@ -281,6 +282,28 @@ export default function Home() {
     flashStatus("Saved locally");
   };
 
+  const handleToggleFavorite = (id: string) => {
+    const nextSavedWorkouts = toggleWorkoutFavorite(id);
+    setSavedWorkouts(nextSavedWorkouts);
+    const toggled = nextSavedWorkouts.find((item) => item.id === id);
+    if (id === workout.id && toggled) {
+      // Patch the active workout in place; favoriting is not an edit, so it
+      // must not enter undo history or bump updatedAt.
+      setWorkoutHistory((current) => ({
+        ...current,
+        present: { ...current.present, favorite: toggled.favorite },
+      }));
+    }
+    flashStatus(toggled?.favorite ? "Added to favorites" : "Removed from favorites");
+  };
+
+  const handleNewWorkout = () => {
+    const nextWorkout = createBlankWorkout(profile.ftp);
+    replaceActiveWorkout(nextWorkout);
+    setActiveTab("builder");
+    flashStatus("Started blank workout");
+  };
+
   const handleDeleteWorkout = (id: string) => {
     const nextSavedWorkouts = deleteWorkout(id);
     setSavedWorkouts(nextSavedWorkouts);
@@ -397,12 +420,7 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const nextWorkout = createBlankWorkout(profile.ftp);
-                  replaceActiveWorkout(nextWorkout);
-                  setActiveTab("builder");
-                  flashStatus("Started blank workout");
-                }}
+                onClick={handleNewWorkout}
                 className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-cyan-300"
               >
                 New workout
@@ -469,6 +487,8 @@ export default function Home() {
             }}
             onSaveWorkout={handleSaveWorkout}
             onDeleteWorkout={handleDeleteWorkout}
+            onToggleFavorite={handleToggleFavorite}
+            onCreateNew={handleNewWorkout}
           />
         ) : null}
 
@@ -481,7 +501,7 @@ export default function Home() {
           />
         ) : null}
 
-        {activeTab === "export" ? <ExportPanel workout={workout} /> : null}
+        {activeTab === "export" ? <ExportPanel key={workout.id} workout={workout} /> : null}
       </div>
     </main>
   );

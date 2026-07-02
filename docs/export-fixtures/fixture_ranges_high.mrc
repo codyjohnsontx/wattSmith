@@ -1,0 +1,15 @@
+[COURSE HEADER]
+VERSION = 2
+UNITS = ENGLISH
+DESCRIPTION = Range targets that exercise the low, midpoint, and high export strategies.
+FILE NAME = fixture_ranges.mrc
+MINUTES PERCENT
+[END COURSE HEADER]
+[COURSE DATA]
+0.000	94
+15.000	94
+15.000	55
+20.000	55
+20.000	105
+30.000	105
+[END COURSE DATA]

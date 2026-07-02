@@ -1,0 +1,16 @@
+[COURSE HEADER]
+VERSION = 2
+UNITS = ENGLISH
+DESCRIPTION = Back-to-back steady targets with no ramps or ranges.
+FILE NAME = fixture_steady_blocks.erg
+FTP = 200
+MINUTES	WATTS
+[END COURSE HEADER]
+[COURSE DATA]
+0.000	160
+10.000	160
+10.000	100
+15.000	100
+15.000	170
+25.000	170
+[END COURSE DATA]

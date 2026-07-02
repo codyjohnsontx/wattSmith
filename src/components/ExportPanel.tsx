@@ -1,5 +1,9 @@
 import { exportWorkoutToErg } from "@/lib/workout/exportErg";
-import { exportWorkoutToMrc, safeFileName } from "@/lib/workout/exportMrc";
+import {
+  exportWorkoutToMrc,
+  resolveExportBaseFileName,
+  safeFileName,
+} from "@/lib/workout/exportMrc";
 import { buildExportReadinessChecklist } from "@/lib/workout/exportReadiness";
 import { formatDuration } from "@/lib/workout/math";
 import { calculateWorkoutSummary } from "@/lib/workout/summary";
@@ -50,12 +54,19 @@ export function ExportPanel({ workout }: ExportPanelProps) {
   const [copyError, setCopyError] = useState("");
   const [rangeStrategy, setRangeStrategy] = useState<ExportRangeStrategy>("midpoint");
   const [previewFormat, setPreviewFormat] = useState<"mrc" | "erg">("mrc");
+  const [fileNameInput, setFileNameInput] = useState(() => safeFileName(workout.name));
   const summary = useMemo(() => calculateWorkoutSummary(workout), [workout]);
   const issues = useMemo(() => validateWorkout(workout), [workout]);
   const hasErrors = issues.some((issue) => issue.severity === "error");
-  const baseFileName = safeFileName(workout.name) || "wattsmith_workout";
-  const mrc = useMemo(() => exportWorkoutToMrc(workout, rangeStrategy), [workout, rangeStrategy]);
-  const erg = useMemo(() => exportWorkoutToErg(workout, rangeStrategy), [workout, rangeStrategy]);
+  const baseFileName = resolveExportBaseFileName(workout, fileNameInput);
+  const mrc = useMemo(
+    () => exportWorkoutToMrc(workout, rangeStrategy, baseFileName),
+    [workout, rangeStrategy, baseFileName],
+  );
+  const erg = useMemo(
+    () => exportWorkoutToErg(workout, rangeStrategy, baseFileName),
+    [workout, rangeStrategy, baseFileName],
+  );
   const readinessChecklist = useMemo(
     () =>
       buildExportReadinessChecklist({
@@ -65,8 +76,9 @@ export function ExportPanel({ workout }: ExportPanelProps) {
         summary,
         mrc,
         erg,
+        baseFileName: fileNameInput,
       }),
-    [workout, rangeStrategy, issues, summary, mrc, erg],
+    [workout, rangeStrategy, issues, summary, mrc, erg, fileNameInput],
   );
   const passedCount = readinessChecklist.filter((item) => item.status === "pass").length;
   const preview = previewFormat === "mrc" ? mrc : erg;
@@ -137,7 +149,7 @@ TSS estimate: ${summary.trainingStressScore}`;
         </div>
       </section>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-[220px_1fr]">
+      <div className="mt-4 grid gap-3 sm:grid-cols-[220px_220px_1fr]">
         <label>
           <span className="text-xs font-medium text-slate-400">Range export value</span>
           <select
@@ -149,6 +161,20 @@ TSS estimate: ${summary.trainingStressScore}`;
             <option value="midpoint">Midpoint</option>
             <option value="high">High end</option>
           </select>
+        </label>
+        <label>
+          <span className="text-xs font-medium text-slate-400">File name</span>
+          <input
+            value={fileNameInput}
+            onChange={(event) => setFileNameInput(event.target.value)}
+            onBlur={() => setFileNameInput(safeFileName(fileNameInput))}
+            placeholder={safeFileName(workout.name) || "wattsmith_workout"}
+            aria-label="Export file name"
+            className="mt-1 h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300"
+          />
+          <span className="mt-1 block text-xs text-slate-500">
+            Downloads as {baseFileName.toLowerCase()}.mrc / .erg
+          </span>
         </label>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <button

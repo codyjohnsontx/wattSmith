@@ -305,6 +305,7 @@ export function duplicateWorkout(workout: Workout): Workout {
     ...structuredClone(workout),
     id: createId("workout"),
     name: `${workout.name} copy`,
+    favorite: false,
     createdAt: timestamp,
     updatedAt: timestamp,
   };

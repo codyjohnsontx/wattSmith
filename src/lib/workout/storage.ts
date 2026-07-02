@@ -115,6 +115,7 @@ function withWorkoutDefaults(workout: Workout): Workout {
   return {
     ...workout,
     category: workout.category ?? "vo2",
+    favorite: workout.favorite === true,
     cues: workout.cues ?? [],
     blocks: workout.blocks.map(withStepDefaults),
   };
@@ -243,7 +244,7 @@ function safeWorkoutDefaults(value: unknown): Workout | undefined {
   }
 }
 
-function normalizeWorkouts(value: unknown): Workout[] {
+export function normalizeWorkouts(value: unknown): Workout[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -279,6 +280,16 @@ export function loadWorkouts(): Workout[] {
   }
 }
 
+function persistWorkouts(workouts: Workout[]): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(WORKOUTS_STORAGE_KEY, JSON.stringify(workouts));
+  } catch (error) {
+    console.warn("Unable to save workouts to localStorage", error);
+  }
+}
+
 export function saveWorkout(workout: Workout): Workout[] {
   const existing = loadWorkouts();
   const updatedWorkout = { ...workout, updatedAt: new Date().toISOString() };
@@ -286,13 +297,25 @@ export function saveWorkout(workout: Workout): Workout[] {
     ? existing.map((item) => (item.id === workout.id ? updatedWorkout : item))
     : [updatedWorkout, ...existing];
 
-  window.localStorage.setItem(WORKOUTS_STORAGE_KEY, JSON.stringify(next));
+  persistWorkouts(next);
   return next;
 }
 
 export function deleteWorkout(id: string): Workout[] {
   const next = loadWorkouts().filter((workout) => workout.id !== id);
-  window.localStorage.setItem(WORKOUTS_STORAGE_KEY, JSON.stringify(next));
+  persistWorkouts(next);
+  return next;
+}
+
+export function toggleFavoriteInList(workouts: Workout[], id: string): Workout[] {
+  return workouts.map((workout) =>
+    workout.id === id ? { ...workout, favorite: !workout.favorite } : workout,
+  );
+}
+
+export function toggleWorkoutFavorite(id: string): Workout[] {
+  const next = toggleFavoriteInList(loadWorkouts(), id);
+  persistWorkouts(next);
   return next;
 }
 

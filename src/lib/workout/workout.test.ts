@@ -27,7 +27,7 @@ import type { ExportRangeStrategy, Workout, WorkoutStep } from "./types";
 function buildChecklist(
   workout: Workout,
   rangeStrategy: ExportRangeStrategy = "midpoint",
-  overrides: Partial<{ mrc: string; erg: string }> = {},
+  overrides: Partial<{ mrc: string; erg: string; baseFileName: string }> = {},
 ): ExportReadinessItem[] {
   return buildExportReadinessChecklist({
     workout,
@@ -36,6 +36,7 @@ function buildChecklist(
     summary: calculateWorkoutSummary(workout),
     mrc: overrides.mrc ?? exportWorkoutToMrc(workout, rangeStrategy),
     erg: overrides.erg ?? exportWorkoutToErg(workout, rangeStrategy),
+    baseFileName: overrides.baseFileName,
   });
 }
 
@@ -123,6 +124,41 @@ describe("workout helpers", () => {
     expect(exportWorkoutToMrc(workout, "low")).toContain("0.000\t80");
     expect(exportWorkoutToMrc(workout, "midpoint")).toContain("0.000\t85");
     expect(exportWorkoutToMrc(workout, "high")).toContain("0.000\t90");
+  });
+
+  it("embeds a custom base filename in both export headers", () => {
+    const mrc = exportWorkoutToMrc(defaultWorkout, "midpoint", "My Custom Ride");
+    const erg = exportWorkoutToErg(defaultWorkout, "midpoint", "My Custom Ride");
+
+    expect(mrc).toContain("FILE NAME = my_custom_ride.mrc");
+    expect(erg).toContain("FILE NAME = my_custom_ride.erg");
+  });
+
+  it("derives the export filename from the workout name when no custom name is given", () => {
+    const workout = { ...defaultWorkout, name: "Threshold Builder" };
+
+    expect(exportWorkoutToMrc(workout)).toContain("FILE NAME = threshold_builder.mrc");
+    expect(exportWorkoutToErg(workout)).toContain("FILE NAME = threshold_builder.erg");
+  });
+
+  it("passes the filename readiness check with a custom name", () => {
+    const item = readinessItem(
+      buildChecklist(defaultWorkout, "midpoint", { baseFileName: "My Custom Ride" }),
+      "filename",
+    );
+
+    expect(item.status).toBe("pass");
+    expect(item.message).toContain("my_custom_ride");
+  });
+
+  it("warns when a custom filename sanitizes to nothing", () => {
+    const item = readinessItem(
+      buildChecklist(defaultWorkout, "midpoint", { baseFileName: "///" }),
+      "filename",
+    );
+
+    expect(item.status).toBe("warn");
+    expect(item.message).toContain("falling back to");
   });
 
   it("marks the default workout as export-ready", () => {

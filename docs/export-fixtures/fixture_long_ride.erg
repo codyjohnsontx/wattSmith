@@ -1,0 +1,16 @@
+[COURSE HEADER]
+VERSION = 2
+UNITS = ENGLISH
+DESCRIPTION = Over four hours of endurance to exercise the long-workout warning.
+FILE NAME = fixture_long_ride.erg
+FTP = 200
+MINUTES	WATTS
+[END COURSE HEADER]
+[COURSE DATA]
+0.000	90
+15.000	130
+15.000	130
+255.000	130
+255.000	90
+265.000	90
+[END COURSE DATA]

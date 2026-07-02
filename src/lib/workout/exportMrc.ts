@@ -12,13 +12,20 @@ export function safeFileName(name: string): string {
     .replace(/_+/g, "_");
 }
 
+export const FALLBACK_EXPORT_FILE_NAME = "wattsmith_workout";
+
+export function resolveExportBaseFileName(workout: Workout, custom?: string): string {
+  return safeFileName(custom ?? "") || safeFileName(workout.name) || FALLBACK_EXPORT_FILE_NAME;
+}
+
 export function exportWorkoutToMrc(
   workout: Workout,
   rangeStrategy: ExportRangeStrategy = "midpoint",
+  baseFileName?: string,
 ): string {
   const segments = flattenWorkout(workout, rangeStrategy);
   const cues = collectWorkoutCues(workout);
-  const fileName = `${safeFileName(workout.name) || "wattsmith_workout"}.mrc`.toLowerCase();
+  const fileName = `${resolveExportBaseFileName(workout, baseFileName)}.mrc`.toLowerCase();
   const lines = [
     "[COURSE HEADER]",
     "VERSION = 2",

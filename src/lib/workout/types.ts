@@ -35,6 +35,7 @@ export interface Workout {
   name: string;
   description: string;
   category?: WorkoutCategory;
+  favorite?: boolean;
   ftp: number;
   blocks: WorkoutStep[];
   cues?: WorkoutCue[];

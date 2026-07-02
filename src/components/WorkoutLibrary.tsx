@@ -1,6 +1,19 @@
+import {
+  difficultyLabels,
+  workoutDifficulties,
+  type WorkoutDifficulty,
+} from "@/lib/workout/difficulty";
 import { duplicateWorkout } from "@/lib/workout/editor";
-import { formatDuration } from "@/lib/workout/math";
-import { calculateWorkoutSummary } from "@/lib/workout/summary";
+import {
+  decorateWorkouts,
+  filterLibraryEntries,
+  sortLibraryEntries,
+  sortOrderLabels,
+  workoutSortOrders,
+  type LibraryWorkoutEntry,
+  type WorkoutSortOrder,
+} from "@/lib/workout/library";
+import { formatDuration, formatRelativeTime } from "@/lib/workout/math";
 import { cloneTemplateWorkout, workoutCategories, workoutTemplates } from "@/lib/workout/templates";
 import type { AthleteProfile, Workout, WorkoutCategory, WorkoutTemplate } from "@/lib/workout/types";
 import { useMemo, useState } from "react";
@@ -13,6 +26,8 @@ interface WorkoutLibraryProps {
   onLoad: (workout: Workout) => void;
   onSaveWorkout: (workout: Workout) => void;
   onDeleteWorkout: (id: string) => void;
+  onToggleFavorite: (id: string) => void;
+  onCreateNew?: () => void;
 }
 
 function categoryLabel(category?: WorkoutCategory) {
@@ -20,24 +35,38 @@ function categoryLabel(category?: WorkoutCategory) {
 }
 
 function WorkoutRow({
-  workout,
+  entry,
   onLoad,
   onDuplicate,
   onDelete,
   onRename,
+  onToggleFavorite,
 }: {
-  workout: Workout;
+  entry: LibraryWorkoutEntry;
   onLoad: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onRename: (name: string) => void;
+  onToggleFavorite: () => void;
 }) {
-  const summary = calculateWorkoutSummary(workout);
+  const { workout, summary, difficulty } = entry;
+  const isFavorite = workout.favorite === true;
 
   return (
     <article className="grid gap-3 rounded-lg border border-slate-800 bg-slate-950/70 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
       <div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleFavorite}
+            aria-pressed={isFavorite}
+            aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+            className={`text-lg leading-none transition ${
+              isFavorite ? "text-amber-300" : "text-slate-600 hover:text-slate-300"
+            }`}
+          >
+            {isFavorite ? "★" : "☆"}
+          </button>
           <input
             value={workout.name}
             onChange={(event) => onRename(event.target.value)}
@@ -47,11 +76,15 @@ function WorkoutRow({
           <span className="rounded-full bg-slate-800 px-2.5 py-1 text-xs capitalize text-slate-300">
             {categoryLabel(workout.category)}
           </span>
+          <span className="rounded-full bg-slate-800 px-2.5 py-1 text-xs text-slate-300">
+            {difficultyLabels[difficulty]}
+          </span>
         </div>
         <p className="mt-1 text-sm leading-6 text-slate-400">{workout.description}</p>
         <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">
           {formatDuration(summary.totalDurationSeconds)} · avg {summary.averageWatts}W · high{" "}
-          {summary.highestWatts}W · {summary.dominantZone.label}
+          {summary.highestWatts}W · {summary.dominantZone.label} · Edited{" "}
+          {formatRelativeTime(workout.updatedAt)}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -88,34 +121,56 @@ export function WorkoutLibrary({
   onLoad,
   onSaveWorkout,
   onDeleteWorkout,
+  onToggleFavorite,
+  onCreateNew,
 }: WorkoutLibraryProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"all" | WorkoutCategory>("all");
+  const [difficulty, setDifficulty] = useState<"all" | WorkoutDifficulty>("all");
+  const [sortOrder, setSortOrder] = useState<WorkoutSortOrder>("recent");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<WorkoutTemplate | undefined>();
 
-  const filteredWorkouts = useMemo(
+  const decoratedWorkouts = useMemo(() => decorateWorkouts(workouts), [workouts]);
+  const visibleWorkouts = useMemo(
     () =>
-      workouts.filter((workout) => {
-        const matchesQuery = `${workout.name} ${workout.description}`
-          .toLowerCase()
-          .includes(query.toLowerCase());
-        const matchesCategory = category === "all" || workout.category === category;
-        return matchesQuery && matchesCategory;
-      }),
-    [workouts, query, category],
+      sortLibraryEntries(
+        filterLibraryEntries(decoratedWorkouts, { query, category, difficulty, favoritesOnly }),
+        sortOrder,
+      ),
+    [decoratedWorkouts, query, category, difficulty, favoritesOnly, sortOrder],
   );
 
-  const filteredTemplates = useMemo(
+  const templateEntries = useMemo(
     () =>
-      workoutTemplates.filter((template) => {
+      workoutTemplates.map((template) => ({
+        template,
+        entry: decorateWorkouts([{ ...template.defaultWorkout, ftp: activeFtp }])[0],
+      })),
+    [activeFtp],
+  );
+  const visibleTemplates = useMemo(
+    () =>
+      templateEntries.filter(({ template, entry }) => {
         const matchesQuery = `${template.name} ${template.description}`
           .toLowerCase()
-          .includes(query.toLowerCase());
+          .includes(query.trim().toLowerCase());
         const matchesCategory = category === "all" || template.category === category;
-        return matchesQuery && matchesCategory;
+        const matchesDifficulty = difficulty === "all" || entry.difficulty === difficulty;
+        return matchesQuery && matchesCategory && matchesDifficulty;
       }),
-    [query, category],
+    [templateEntries, query, category, difficulty],
   );
+
+  const hasActiveFilters =
+    query.trim().length > 0 || category !== "all" || difficulty !== "all" || favoritesOnly;
+
+  const clearFilters = () => {
+    setQuery("");
+    setCategory("all");
+    setDifficulty("all");
+    setFavoritesOnly(false);
+  };
 
   const previewWorkout = useMemo(() => {
     if (!previewTemplate) return undefined;
@@ -131,6 +186,16 @@ export function WorkoutLibrary({
     onLoad(cloneTemplateWorkout(template, activeFtp));
   };
 
+  const clearFiltersButton = (
+    <button
+      type="button"
+      onClick={clearFilters}
+      className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-cyan-300"
+    >
+      Clear filters
+    </button>
+  );
+
   return (
     <section className="space-y-5">
       <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
@@ -138,7 +203,7 @@ export function WorkoutLibrary({
           Library
         </p>
         <h2 className="mt-1 text-xl font-semibold text-slate-50">Saved workouts and templates</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_220px]">
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_180px_180px_190px_auto]">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -159,6 +224,43 @@ export function WorkoutLibrary({
               </option>
             ))}
           </select>
+          <select
+            value={difficulty}
+            onChange={(event) => setDifficulty(event.target.value as "all" | WorkoutDifficulty)}
+            aria-label="Filter workouts by difficulty"
+            className="h-11 rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300"
+          >
+            <option value="all">All difficulties</option>
+            {workoutDifficulties.map((item) => (
+              <option key={item} value={item}>
+                {difficultyLabels[item]}
+              </option>
+            ))}
+          </select>
+          <select
+            value={sortOrder}
+            onChange={(event) => setSortOrder(event.target.value as WorkoutSortOrder)}
+            aria-label="Sort saved workouts"
+            className="h-11 rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300"
+          >
+            {workoutSortOrders.map((item) => (
+              <option key={item} value={item}>
+                {sortOrderLabels[item]}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setFavoritesOnly((current) => !current)}
+            aria-pressed={favoritesOnly}
+            className={`h-11 rounded-lg border px-4 text-sm font-semibold transition ${
+              favoritesOnly
+                ? "border-amber-300/60 bg-amber-300/10 text-amber-200"
+                : "border-slate-700 bg-slate-950 text-slate-300 hover:border-cyan-300"
+            }`}
+          >
+            ★ Favorites
+          </button>
         </div>
       </div>
 
@@ -167,21 +269,40 @@ export function WorkoutLibrary({
           <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
             Saved
           </h3>
-          {filteredWorkouts.length > 0 ? (
-            filteredWorkouts.map((workout) => (
+          {visibleWorkouts.length > 0 ? (
+            visibleWorkouts.map((entry) => (
               <WorkoutRow
-                key={workout.id}
-                workout={workout}
-                onLoad={() => onLoad(structuredClone(workout))}
-                onDuplicate={() => onSaveWorkout(duplicateWorkout(workout))}
-                onDelete={() => onDeleteWorkout(workout.id)}
-                onRename={(name) => onSaveWorkout({ ...workout, name })}
+                key={entry.workout.id}
+                entry={entry}
+                onLoad={() => onLoad(structuredClone(entry.workout))}
+                onDuplicate={() => onSaveWorkout(duplicateWorkout(entry.workout))}
+                onDelete={() => onDeleteWorkout(entry.workout.id)}
+                onRename={(name) => onSaveWorkout({ ...entry.workout, name })}
+                onToggleFavorite={() => onToggleFavorite(entry.workout.id)}
               />
             ))
+          ) : workouts.length === 0 ? (
+            <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-6 text-center">
+              <p className="text-base font-semibold text-slate-100">No saved workouts yet</p>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Build a workout in the Builder and press Save, or start from a starter template on
+                the right.
+              </p>
+              {onCreateNew ? (
+                <button
+                  type="button"
+                  onClick={onCreateNew}
+                  className="mt-4 rounded-lg bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"
+                >
+                  Start a blank workout
+                </button>
+              ) : null}
+            </div>
           ) : (
-            <p className="rounded-lg border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">
-              No saved workouts match this filter.
-            </p>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+              <p className="text-sm text-slate-400">No saved workouts match these filters.</p>
+              {hasActiveFilters ? <div className="mt-3">{clearFiltersButton}</div> : null}
+            </div>
           )}
         </section>
 
@@ -189,47 +310,52 @@ export function WorkoutLibrary({
           <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
             Starter templates
           </h3>
-          {filteredTemplates.map((template) => {
-            const workout = { ...template.defaultWorkout, ftp: activeFtp };
-            const summary = calculateWorkoutSummary(workout);
-            return (
-              <article
-                key={template.id}
-                className="rounded-lg border border-slate-800 bg-slate-950/70 p-4"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-semibold text-slate-50">{template.name}</h3>
-                  <span className="rounded-full bg-slate-800 px-2.5 py-1 text-xs capitalize text-slate-300">
-                    {categoryLabel(template.category)}
-                  </span>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-slate-400">{template.description}</p>
-                <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">
-                  {formatDuration(summary.totalDurationSeconds)} · avg {summary.averageWatts}W ·
-                  high {summary.highestWatts}W
-                </p>
-                <p className="mt-3 text-sm leading-6 text-slate-300">
-                  {template.rationale.summary}
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewTemplate(template)}
-                    className="rounded-lg bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-200"
-                  >
-                    Preview
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleUseTemplate(template)}
-                    className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-cyan-300"
-                  >
-                    Use template
-                  </button>
-                </div>
-              </article>
-            );
-          })}
+          {visibleTemplates.length === 0 ? (
+            <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+              <p className="text-sm text-slate-400">No templates match these filters.</p>
+              {hasActiveFilters ? <div className="mt-3">{clearFiltersButton}</div> : null}
+            </div>
+          ) : null}
+          {visibleTemplates.map(({ template, entry }) => (
+            <article
+              key={template.id}
+              className="rounded-lg border border-slate-800 bg-slate-950/70 p-4"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-semibold text-slate-50">{template.name}</h3>
+                <span className="rounded-full bg-slate-800 px-2.5 py-1 text-xs capitalize text-slate-300">
+                  {categoryLabel(template.category)}
+                </span>
+                <span className="rounded-full bg-slate-800 px-2.5 py-1 text-xs text-slate-300">
+                  {difficultyLabels[entry.difficulty]}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-400">{template.description}</p>
+              <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">
+                {formatDuration(entry.summary.totalDurationSeconds)} · avg{" "}
+                {entry.summary.averageWatts}W · high {entry.summary.highestWatts}W
+              </p>
+              <p className="mt-3 text-sm leading-6 text-slate-300">
+                {template.rationale.summary}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPreviewTemplate(template)}
+                  className="rounded-lg bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-200"
+                >
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUseTemplate(template)}
+                  className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-cyan-300"
+                >
+                  Use template
+                </button>
+              </div>
+            </article>
+          ))}
         </section>
       </div>
 
