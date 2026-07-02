@@ -26,8 +26,17 @@ for (const fixture of exportTestFixtures) {
 
   if (fixture.id === "fixture-ranges") {
     for (const strategy of rangeStrategies) {
-      writeFixtureFile(`${baseName}_${strategy}`, "mrc", exportWorkoutToMrc(fixture, strategy));
-      writeFixtureFile(`${baseName}_${strategy}`, "erg", exportWorkoutToErg(fixture, strategy));
+      const strategyBaseName = `${baseName}_${strategy}`;
+      writeFixtureFile(
+        strategyBaseName,
+        "mrc",
+        exportWorkoutToMrc(fixture, strategy, strategyBaseName),
+      );
+      writeFixtureFile(
+        strategyBaseName,
+        "erg",
+        exportWorkoutToErg(fixture, strategy, strategyBaseName),
+      );
     }
     continue;
   }

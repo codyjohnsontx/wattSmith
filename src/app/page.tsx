@@ -271,7 +271,7 @@ export default function Home() {
       createdAt: workoutToSave.createdAt || timestamp,
       updatedAt: timestamp,
     };
-    const nextSavedWorkouts = saveWorkout(nextWorkout);
+    const { workouts: nextSavedWorkouts, persisted } = saveWorkout(nextWorkout);
     if (nextWorkout.id === workout.id) {
       setWorkoutHistory((current) => ({
         ...current,
@@ -279,11 +279,11 @@ export default function Home() {
       }));
     }
     setSavedWorkouts(nextSavedWorkouts);
-    flashStatus("Saved locally");
+    flashStatus(persisted ? "Saved locally" : "Could not save to this browser");
   };
 
   const handleToggleFavorite = (id: string) => {
-    const nextSavedWorkouts = toggleWorkoutFavorite(id);
+    const { workouts: nextSavedWorkouts, persisted } = toggleWorkoutFavorite(id);
     setSavedWorkouts(nextSavedWorkouts);
     const toggled = nextSavedWorkouts.find((item) => item.id === id);
     if (id === workout.id && toggled) {
@@ -294,7 +294,11 @@ export default function Home() {
         present: { ...current.present, favorite: toggled.favorite },
       }));
     }
-    flashStatus(toggled?.favorite ? "Added to favorites" : "Removed from favorites");
+    if (!persisted) {
+      flashStatus("Could not save favorite to this browser");
+    } else {
+      flashStatus(toggled?.favorite ? "Added to favorites" : "Removed from favorites");
+    }
   };
 
   const handleNewWorkout = () => {
@@ -305,13 +309,13 @@ export default function Home() {
   };
 
   const handleDeleteWorkout = (id: string) => {
-    const nextSavedWorkouts = deleteWorkout(id);
+    const { workouts: nextSavedWorkouts, persisted } = deleteWorkout(id);
     setSavedWorkouts(nextSavedWorkouts);
     if (workout.id === id) {
       const nextWorkout = nextSavedWorkouts[0] ?? createBlankWorkout(profile.ftp);
       replaceActiveWorkout(nextWorkout);
     }
-    flashStatus("Deleted workout");
+    flashStatus(persisted ? "Deleted workout" : "Could not update this browser");
   };
 
   const handleSaveReusableBlock = (block: ReusableWorkoutBlock) => {

@@ -280,31 +280,36 @@ export function loadWorkouts(): Workout[] {
   }
 }
 
-function persistWorkouts(workouts: Workout[]): void {
-  if (typeof window === "undefined") return;
+export interface WorkoutMutationResult {
+  workouts: Workout[];
+  persisted: boolean;
+}
+
+function persistWorkouts(workouts: Workout[]): boolean {
+  if (typeof window === "undefined") return false;
 
   try {
     window.localStorage.setItem(WORKOUTS_STORAGE_KEY, JSON.stringify(workouts));
+    return true;
   } catch (error) {
     console.warn("Unable to save workouts to localStorage", error);
+    return false;
   }
 }
 
-export function saveWorkout(workout: Workout): Workout[] {
+export function saveWorkout(workout: Workout): WorkoutMutationResult {
   const existing = loadWorkouts();
   const updatedWorkout = { ...workout, updatedAt: new Date().toISOString() };
   const next = existing.some((item) => item.id === workout.id)
     ? existing.map((item) => (item.id === workout.id ? updatedWorkout : item))
     : [updatedWorkout, ...existing];
 
-  persistWorkouts(next);
-  return next;
+  return { workouts: next, persisted: persistWorkouts(next) };
 }
 
-export function deleteWorkout(id: string): Workout[] {
+export function deleteWorkout(id: string): WorkoutMutationResult {
   const next = loadWorkouts().filter((workout) => workout.id !== id);
-  persistWorkouts(next);
-  return next;
+  return { workouts: next, persisted: persistWorkouts(next) };
 }
 
 export function toggleFavoriteInList(workouts: Workout[], id: string): Workout[] {
@@ -313,10 +318,9 @@ export function toggleFavoriteInList(workouts: Workout[], id: string): Workout[]
   );
 }
 
-export function toggleWorkoutFavorite(id: string): Workout[] {
+export function toggleWorkoutFavorite(id: string): WorkoutMutationResult {
   const next = toggleFavoriteInList(loadWorkouts(), id);
-  persistWorkouts(next);
-  return next;
+  return { workouts: next, persisted: persistWorkouts(next) };
 }
 
 export function loadReusableBlocks(): ReusableWorkoutBlock[] {

@@ -1,5 +1,6 @@
 import { exportWorkoutToErg } from "@/lib/workout/exportErg";
 import {
+  FALLBACK_EXPORT_FILE_NAME,
   exportWorkoutToMrc,
   resolveExportBaseFileName,
   safeFileName,
@@ -168,7 +169,7 @@ TSS estimate: ${summary.trainingStressScore}`;
             value={fileNameInput}
             onChange={(event) => setFileNameInput(event.target.value)}
             onBlur={() => setFileNameInput(safeFileName(fileNameInput))}
-            placeholder={safeFileName(workout.name) || "wattsmith_workout"}
+            placeholder={safeFileName(workout.name) || FALLBACK_EXPORT_FILE_NAME}
             aria-label="Export file name"
             className="mt-1 h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300"
           />
