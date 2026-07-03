@@ -11,34 +11,42 @@ interface WorkoutChartProps {
   onSelectStep?: (stepId: string) => void;
 }
 
-const chartWidth = 1000;
-const chartHeight = 360;
-const margin = { top: 28, right: 34, bottom: 48, left: 78 };
+const chartWidth = 1400;
+const chartHeight = 470;
+const margin = { top: 36, right: 44, bottom: 62, left: 100 };
 const tooltipWidth = 260;
 const tooltipHeight = 116;
 const tooltipOffset = 14;
 const referencePercents = [0, 50, 75, 100, 120];
 
-const zoneBands = [
-  { label: "Recovery", min: 0, max: 55, color: "#334155" },
-  { label: "Endurance", min: 55, max: 75, color: "#0f766e" },
-  { label: "Tempo", min: 76, max: 87, color: "#2563eb" },
-  { label: "Sweet Spot", min: 88, max: 94, color: "#7c3aed" },
-  { label: "Threshold", min: 95, max: 105, color: "#eab308" },
-  { label: "VO2", min: 106, max: 120, color: "#f97316" },
-  { label: "Anaerobic", min: 120, max: 150, color: "#ef4444" },
+interface Zone {
+  id: string;
+  label: string;
+  max: number;
+  color: string;
+}
+
+// Single source of truth for intensity zones. Ranges align with the Summary
+// zones in src/lib/workout/summary.ts so the chart and Summary agree, and the
+// ordered colors (grey → green → red) drive the profile fill, the accent, the
+// zone label, and the legend.
+const zones: Zone[] = [
+  { id: "recovery", label: "Recovery", max: 54.999, color: "#64748b" },
+  { id: "endurance", label: "Endurance", max: 75, color: "#22c55e" },
+  { id: "tempo", label: "Tempo", max: 87, color: "#84cc16" },
+  { id: "sweet-spot", label: "Sweet Spot", max: 94, color: "#eab308" },
+  { id: "threshold", label: "Threshold", max: 105, color: "#f59e0b" },
+  { id: "vo2", label: "VO2", max: 120, color: "#f97316" },
+  { id: "anaerobic", label: "Anaerobic", max: Infinity, color: "#ef4444" },
 ];
+
+function zoneForPercent(percent: number): Zone {
+  return zones.find((zone) => percent <= zone.max) ?? zones[zones.length - 1];
+}
 
 function segmentColor(segment: FlattenedSegment) {
   const avgPercent = (segment.startPercentFTP + segment.endPercentFTP) / 2;
-
-  if (segment.type === "warmup") return "#22c55e";
-  if (segment.type === "cooldown") return "#38bdf8";
-  if (avgPercent > 120) return "#ef4444";
-  if (avgPercent >= 106) return "#f97316";
-  if (avgPercent >= 95) return "#facc15";
-  if (avgPercent < 55) return "#64748b";
-  return "#14b8a6";
+  return zoneForPercent(avgPercent).color;
 }
 
 interface HoverState {
@@ -167,13 +175,7 @@ function interpolateSegmentPoint(segment: FlattenedSegment, seconds: number): Ch
 }
 
 function getZoneLabel(percentFTP: number): string {
-  if (percentFTP < 55) return "Recovery";
-  if (percentFTP <= 75) return "Endurance";
-  if (percentFTP <= 87) return "Tempo";
-  if (percentFTP <= 94) return "Sweet Spot";
-  if (percentFTP <= 105) return "Threshold";
-  if (percentFTP <= 120) return "VO2";
-  return "Anaerobic";
+  return zoneForPercent(percentFTP).label;
 }
 
 function formatSegmentTimeRange(segment: FlattenedSegment): string {
@@ -224,9 +226,11 @@ function getTooltipText(state: HoverState): string {
 function ChartTooltip({
   state,
   bounds,
+  onClose,
 }: {
   state: HoverState;
   bounds?: ChartBounds;
+  onClose: () => void;
 }) {
   const rawLeft = bounds ? state.clientX - bounds.left : state.clientX;
   const rawTop = bounds ? state.clientY - bounds.top : state.clientY;
@@ -252,10 +256,26 @@ function ChartTooltip({
 
   return (
     <div
-      className="pointer-events-none absolute z-20 max-w-[260px] rounded-lg border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs text-slate-100 shadow-2xl shadow-black/40 backdrop-blur"
+      className={`absolute z-20 max-w-[260px] rounded-lg border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs text-slate-100 shadow-2xl shadow-black/40 backdrop-blur ${
+        state.pinned ? "pointer-events-auto" : "pointer-events-none"
+      }`}
       style={{ left, top, width: "min(260px, calc(100% - 24px))" }}
     >
-      <p className="truncate text-sm font-semibold text-slate-50">{state.segment.label}</p>
+      {state.pinned ? (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close pinned tooltip"
+          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
+        >
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      ) : null}
+      <p className={`truncate text-sm font-semibold text-slate-50 ${state.pinned ? "pr-5" : ""}`}>
+        {state.segment.label}
+      </p>
       <p className="mt-1 text-slate-400">
         {formatMode(state.segment)} · {formatSegmentTimeRange(state.segment)}
       </p>
@@ -265,7 +285,11 @@ function ChartTooltip({
       </p>
       <p className="mt-1 text-slate-300">{state.zoneLabel}</p>
       {targetDetail ? <p className="mt-1 text-slate-400">{targetDetail}</p> : null}
-      {state.pinned ? <p className="mt-1 text-[10px] uppercase tracking-[0.2em] text-cyan-300">Pinned</p> : null}
+      {state.pinned ? (
+        <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-cyan-300">
+          Pinned · click away or press Esc to close
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -318,7 +342,6 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
     (watts: number) => margin.top + innerHeight - (watts / yMax) * innerHeight,
     [innerHeight, yMax],
   );
-  const percentY = useCallback((percent: number) => y((workout.ftp * percent) / 100), [workout.ftp, y]);
   const tooltipAccessibleText = hoverState ? getTooltipText(hoverState) : "";
 
   const buildHoverState = useCallback(
@@ -404,6 +427,14 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
     ) => {
       if (pinnedSegmentId && !pinned) return;
 
+      // Clicking the already-pinned segment again toggles the tooltip off.
+      if (pinned && pinnedSegmentId === segment.id) {
+        pinnedParentStepIdRef.current = undefined;
+        setHoverState(undefined);
+        setPinnedSegmentId(undefined);
+        return;
+      }
+
       const seconds = segment.startSeconds + segment.durationSeconds / 2;
       captureChartBounds();
       const svgRect = svgRef.current?.getBoundingClientRect();
@@ -435,6 +466,21 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
     setHoverState(undefined);
     setPinnedSegmentId(undefined);
   }, []);
+
+  // Dismiss a pinned tooltip when the user clicks anywhere outside the chart.
+  useEffect(() => {
+    if (!pinnedSegmentId) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const container = chartContainerRef.current;
+      if (container && !container.contains(event.target as Node)) {
+        clearPinnedTooltip();
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [pinnedSegmentId, clearPinnedTooltip]);
 
   const pathPoints: string[] = [];
 
@@ -472,8 +518,32 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
   const referenceLines: ChartReferenceLine[] = shouldShowMaxLine
     ? [...ftpReferenceLines, { watts: yMax, kind: "max" }]
     : ftpReferenceLines;
-  const labelX = margin.left - 10;
-  const ftpLabelY = clamp(y(workout.ftp) - 13, margin.top + 4, margin.top + innerHeight - 24);
+  const labelX = margin.left - 14;
+  const ftpLabelY = clamp(y(workout.ftp) - 18, margin.top + 4, margin.top + innerHeight - 32);
+
+  // Crosshair marker pinning the exact target watts/%FTP at the hovered point.
+  const markerLabel = hoverState
+    ? `${hoverState.watts}W · ${hoverState.percentFTP}% FTP`
+    : "";
+  const markerChipWidth = markerLabel ? markerLabel.length * 8.6 + 20 : 0;
+  const marker = hoverState
+    ? {
+        x: x(hoverState.chartSeconds),
+        y: y(hoverState.watts),
+        label: markerLabel,
+        chipWidth: markerChipWidth,
+        chipX: clamp(
+          x(hoverState.chartSeconds) - markerChipWidth / 2,
+          margin.left,
+          chartWidth - margin.right - markerChipWidth,
+        ),
+        chipY: clamp(
+          y(hoverState.watts) - 36,
+          margin.top + 2,
+          margin.top + innerHeight - 28,
+        ),
+      }
+    : undefined;
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-950 p-4 shadow-2xl shadow-black/30">
@@ -489,6 +559,18 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
         </p>
       </div>
 
+      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1.5">
+        {zones.map((zone) => (
+          <div key={zone.id} className="flex items-center gap-1.5">
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: zone.color }}
+            />
+            <span className="text-xs text-slate-400">{zone.label}</span>
+          </div>
+        ))}
+      </div>
+
       <div
         ref={chartContainerRef}
         className="relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900/70"
@@ -498,9 +580,10 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
           viewBox={`0 0 ${chartWidth} ${chartHeight}`}
           role="group"
           aria-label="Power timeline chart. Hover or tap intervals to inspect target watts and FTP percentage."
-          className="h-auto min-h-[240px] w-full touch-manipulation"
+          className="block h-auto max-h-[480px] min-h-[300px] w-full touch-manipulation"
           onPointerMove={(event) => updateHoverFromPointer(event, false)}
           onPointerLeave={clearTransientHover}
+          onClick={clearPinnedTooltip}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               clearPinnedTooltip();
@@ -508,22 +591,6 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
           }}
         >
           <rect width={chartWidth} height={chartHeight} fill="#020617" />
-
-          {zoneBands.map((band) => {
-            const yTop = Math.max(margin.top, percentY(band.max));
-            const yBottom = Math.min(margin.top + innerHeight, percentY(band.min));
-            return (
-              <rect
-                key={band.label}
-                x={margin.left}
-                y={yTop}
-                width={innerWidth}
-                height={Math.max(0, yBottom - yTop)}
-                fill={band.color}
-                opacity={0.045}
-              />
-            );
-          })}
 
           {xTicks.map((tick) => (
             <line
@@ -547,9 +614,9 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
                 {isZero ? (
                   <rect
                     x={margin.left}
-                    y={lineY - 1}
+                    y={lineY - 1.5}
                     width={innerWidth}
-                    height={2}
+                    height={3}
                     fill="#94a3b8"
                     opacity={0.55}
                   />
@@ -560,8 +627,8 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
                   y1={lineY}
                   y2={lineY}
                   stroke={isFtp ? "#22d3ee" : isZero ? "#64748b" : "#1e293b"}
-                  strokeWidth={isFtp || isZero ? 2 : 1}
-                  strokeDasharray={isFtp || isZero ? undefined : "5 7"}
+                  strokeWidth={isFtp || isZero ? 3 : 1.5}
+                  strokeDasharray={isFtp || isZero ? undefined : "7 9"}
                   opacity={isMax ? 0.75 : isFtp || isZero ? 1 : 0.82}
               />
             </g>
@@ -582,7 +649,17 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
             const selected = segment.parentStepId === selectedStepId;
             const hovered = hoverState?.segment.id === segment.id || pinnedSegmentId === segment.id;
             const rectX = x(segment.startSeconds);
-            const rectWidth = Math.max(1, x(segment.endSeconds) - x(segment.startSeconds));
+            const endX = x(segment.endSeconds);
+            const rectWidth = Math.max(1, endX - rectX);
+            const color = segmentColor(segment);
+            const baselineY = margin.top + innerHeight;
+            const startY = y(segment.startWatts);
+            const endY = y(segment.endWatts);
+            const areaPath = `M ${rectX.toFixed(1)},${startY.toFixed(1)} L ${endX.toFixed(
+              1,
+            )},${endY.toFixed(1)} L ${endX.toFixed(1)},${baselineY.toFixed(1)} L ${rectX.toFixed(
+              1,
+            )},${baselineY.toFixed(1)} Z`;
 
             return (
               <g
@@ -594,7 +671,10 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
                 )}.`}
                 className="outline-none"
                 onPointerEnter={(event) => showSegmentTooltip(segment, false, event)}
-                onClick={(event) => showSegmentTooltip(segment, true, event)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  showSegmentTooltip(segment, true, event);
+                }}
                 onFocus={() => showSegmentTooltip(segment, false)}
                 onBlur={clearTransientHover}
                 onKeyDown={(event) => {
@@ -608,14 +688,23 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
                   }
                 }}
               >
+                {/* Full-height hit target + subtle column highlight on hover/select. */}
                 <rect
                   x={rectX}
                   y={margin.top}
                   width={rectWidth}
                   height={innerHeight}
-                  fill={segmentColor(segment)}
-                  opacity={hovered ? 0.3 : selected ? 0.24 : 0.1}
+                  fill={color}
+                  opacity={hovered ? 0.16 : selected ? 0.12 : 0}
+                  pointerEvents="all"
                   className="cursor-pointer"
+                />
+                {/* Colored intensity silhouette from the power line down to baseline. */}
+                <path
+                  d={areaPath}
+                  fill={color}
+                  opacity={hovered ? 0.68 : selected ? 0.6 : 0.5}
+                  pointerEvents="none"
                 />
                 {segment.targetMode === "range" &&
                 segment.minWatts !== undefined &&
@@ -625,8 +714,9 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
                     y={y(segment.maxWatts)}
                     width={rectWidth}
                     height={Math.max(2, y(segment.minWatts) - y(segment.maxWatts))}
-                    fill={segmentColor(segment)}
-                    opacity={hovered ? 0.38 : 0.28}
+                    fill={color}
+                    opacity={hovered ? 0.45 : 0.35}
+                    pointerEvents="none"
                   />
                 ) : null}
                 {selected || hovered ? (
@@ -637,7 +727,8 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
                     height={innerHeight}
                     fill="none"
                     stroke={hovered ? "#f8fafc" : "#67e8f9"}
-                    strokeWidth={hovered ? "3" : "2"}
+                    strokeWidth={hovered ? "4" : "3"}
+                    pointerEvents="none"
                   />
                 ) : null}
               </g>
@@ -650,8 +741,8 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
             stroke="#020617"
             strokeLinecap="round"
             strokeLinejoin="round"
-            strokeWidth="7"
-            opacity="0.85"
+            strokeWidth="2"
+            opacity="0.7"
             pointerEvents="none"
           />
 
@@ -661,29 +752,9 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
             stroke="#f8fafc"
             strokeLinecap="round"
             strokeLinejoin="round"
-            strokeWidth="4"
+            strokeWidth="1"
             pointerEvents="none"
           />
-
-          {segments.map((segment) => (
-            <line
-              key={`${segment.id}-accent`}
-              x1={x(segment.startSeconds)}
-              x2={x(segment.endSeconds)}
-              y1={y(segment.startWatts)}
-              y2={y(segment.endWatts)}
-              stroke={segmentColor(segment)}
-              strokeLinecap="round"
-              pointerEvents="none"
-              strokeWidth={
-                hoverState?.segment.id === segment.id || pinnedSegmentId === segment.id
-                  ? 5
-                  : segment.parentStepId === selectedStepId
-                    ? 4
-                    : 2
-              }
-            />
-          ))}
 
           {referenceLines.map((line) => {
             const lineY = y(line.watts);
@@ -699,12 +770,12 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
                 y={lineY + (isZero ? -5 : 4)}
                 textAnchor="end"
                 fill={labelColor}
-                fontSize="12"
+                fontSize="17"
                 fontWeight={isFtp || isZero ? 700 : 500}
               >
                 <tspan x={labelX}>{line.watts}W</tspan>
                 {!isZero && !isMax && line.percent !== undefined ? (
-                  <tspan x={labelX} dy="13" fill={isFtp ? "#22d3ee" : "#64748b"} fontSize="10">
+                  <tspan x={labelX} dy="18" fill={isFtp ? "#22d3ee" : "#64748b"} fontSize="13">
                     {line.percent}%
                   </tspan>
                 ) : null}
@@ -713,28 +784,66 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
           })}
 
           {xTicks.map((tick) => (
-            <text key={`${tick}-label`} x={x(tick) - 10} y={chartHeight - 16} fill="#94a3b8" fontSize="12">
+            <text key={`${tick}-label`} x={x(tick) - 14} y={chartHeight - 20} fill="#94a3b8" fontSize="17">
               {Math.round(tick / 60)}m
             </text>
           ))}
 
           {workout.ftp > 0 ? (
-            <g transform={`translate(${chartWidth - margin.right - 62}, ${ftpLabelY})`}>
-              <rect width="54" height="20" rx="10" fill="#083344" stroke="#22d3ee" opacity="0.95" />
+            <g transform={`translate(${chartWidth - margin.right - 84}, ${ftpLabelY})`}>
+              <rect width="74" height="27" rx="14" fill="#083344" stroke="#22d3ee" opacity="0.95" />
               <text
-                x="27"
-                y="14"
+                x="37"
+                y="18"
                 textAnchor="middle"
                 fill="#67e8f9"
-                fontSize="11"
+                fontSize="15"
                 fontWeight="700"
               >
                 FTP
               </text>
             </g>
           ) : null}
+
+          {marker ? (
+            <g pointerEvents="none">
+              <line
+                x1={marker.x}
+                x2={marker.x}
+                y1={margin.top}
+                y2={margin.top + innerHeight}
+                stroke="#f8fafc"
+                strokeWidth={1}
+                strokeDasharray="4 6"
+                opacity={0.45}
+              />
+              <circle cx={marker.x} cy={marker.y} r={5.5} fill="#f8fafc" stroke="#020617" strokeWidth={2} />
+              <g transform={`translate(${marker.chipX}, ${marker.chipY})`}>
+                <rect
+                  width={marker.chipWidth}
+                  height={24}
+                  rx={6}
+                  fill="#020617"
+                  stroke="#334155"
+                  opacity={0.95}
+                />
+                <text
+                  x={marker.chipWidth / 2}
+                  y={16}
+                  textAnchor="middle"
+                  fill="#f8fafc"
+                  fontSize="14"
+                  fontWeight="600"
+                >
+                  {marker.label}
+                </text>
+              </g>
+            </g>
+          ) : null}
         </svg>
-        {hoverState ? <ChartTooltip state={hoverState} bounds={chartBounds} /> : null}
+        {hoverState ? (
+          <ChartTooltip state={hoverState} bounds={chartBounds} onClose={clearPinnedTooltip} />
+        ) : null}
         <div className="sr-only" aria-live="polite">
           {tooltipAccessibleText}
         </div>
