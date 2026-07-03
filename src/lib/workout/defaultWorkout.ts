@@ -48,6 +48,10 @@ export const defaultWorkout: Workout = {
       "Reduce repeat count or intensity if you are new to structured VO2 work.",
       "Avoid stacking this session on top of heavy fatigue.",
     ],
+    whyItWorks:
+      "The 30-second efforts push oxygen uptake toward its ceiling while the 15-second floats are too short to let it fall back down, so time accumulates near VO2max across the set without any single effort being maximal. Splitting the work into three sets with full recoveries keeps power and form intact from the first rep to the last.",
+    whoShouldModify:
+      "Riders new to VO2 work should drop to two sets or shorten each set; well-trained riders chasing more stimulus can add a fourth set or extend the on-efforts to 40 seconds. Trim it whenever recent fatigue would compromise the quality of the surges.",
   },
   createdAt: now,
   updatedAt: now,

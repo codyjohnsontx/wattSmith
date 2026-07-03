@@ -83,6 +83,8 @@ export interface WorkoutRationale {
   summary: string;
   sourceIds: string[];
   cautions: string[];
+  whyItWorks?: string;
+  whoShouldModify?: string;
 }
 
 export interface WorkoutTemplate {

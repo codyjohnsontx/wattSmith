@@ -15,13 +15,87 @@ function step(stepDefinition: WorkoutStep): WorkoutStep {
   return stepDefinition;
 }
 
-function citedRationale(summary: string, cautions: string[] = []): WorkoutRationale {
-  return {
-    summary,
-    sourceIds: ["coggan-power-zones", "seiler-2010-intensity-distribution"],
-    cautions,
-  };
+function citedRationale(
+  summary: string,
+  {
+    cautions = [],
+    sourceIds = ["coggan-power-zones", "seiler-2010-intensity-distribution"],
+    whyItWorks,
+    whoShouldModify,
+  }: {
+    cautions?: string[];
+    sourceIds?: string[];
+    whyItWorks?: string;
+    whoShouldModify?: string;
+  } = {},
+): WorkoutRationale {
+  return { summary, sourceIds, cautions, whyItWorks, whoShouldModify };
 }
+
+const recoveryRationale = citedRationale(
+  "Very easy endurance riding keeps intensity low and gives the rider a structured option for active recovery.",
+  {
+    cautions: ["Keep this truly easy; it should not feel like training stress."],
+    whyItWorks:
+      "Riding well below aerobic threshold promotes blood flow and easy movement without adding measurable training stress, which is what lets recovery actually happen instead of being delayed. Capping power in the 45-55% range is the entire point: the session is a delivery vehicle for easy pedaling, not fitness.",
+    whoShouldModify:
+      "Anyone who finishes feeling worked has ridden too hard and should shorten it or drop the target further. Riders with heavy legs can cut it to 20 minutes; it should never be lengthened into a real endurance ride.",
+  },
+);
+
+const enduranceRationale = citedRationale(
+  "Endurance work builds volume at sustainable intensity and keeps the main target below threshold.",
+  {
+    whyItWorks:
+      "Sustained riding in the 65-75% band develops aerobic capacity and fat metabolism at an intensity you can repeat often without deep fatigue, which is how aerobic volume compounds over weeks. The brief controlled finish nudges the top of the aerobic range without tipping into threshold work.",
+    whoShouldModify:
+      "Time-crunched riders can shorten the steady block; riders building base can extend it past 90 minutes at the same target. Newer riders should hold the lower end of the range and skip the finishing effort if it starts to feel like work.",
+  },
+);
+
+const tempoRationale = citedRationale(
+  "Tempo work adds moderate aerobic pressure while staying clearly below threshold.",
+  {
+    whyItWorks:
+      "Tempo intervals apply steady aerobic pressure just below threshold, building sustainable power and muscular endurance while staying recoverable enough to fit into most weeks. The short recoveries keep the efforts honest without letting the session drift into threshold territory.",
+    whoShouldModify:
+      "Riders wanting more load can lengthen the intervals to 10-12 minutes or add a fourth rep; those short on time or freshness can drop to two intervals. If the target range feels close to threshold, settle toward the lower end.",
+  },
+);
+
+const sweetSpotRationale = citedRationale(
+  "Sweet spot intervals sit near threshold but remain slightly lower so riders can accumulate controlled work.",
+  {
+    cautions: ["If cadence or form falls apart, reduce the target range."],
+    whyItWorks:
+      "Sweet spot sits just below FTP, high enough to drive meaningful adaptation but low enough to accumulate real volume without the recovery cost of threshold work, which makes it an efficient way to build sustainable power. The 4-minute recoveries keep each interval repeatable at quality.",
+    whoShouldModify:
+      "Build toward four intervals or 12-15 minute blocks as fitness allows, and pull back to two intervals when fatigued. Riders whose cadence or form decays mid-interval should lower the target range rather than push through.",
+  },
+);
+
+const thresholdRationale = citedRationale(
+  "Threshold intervals target sustainable high aerobic power around FTP.",
+  {
+    cautions: ["This should feel hard but controlled, not like repeated maximal efforts."],
+    whyItWorks:
+      "Repeated efforts right around FTP grow sustainable power at the intensity that most defines it, and breaking the work into 6-minute reps banks more total time at threshold than one continuous effort would allow at the same quality. The short recoveries keep the aerobic system loaded between reps.",
+    whoShouldModify:
+      "As threshold improves, extend the reps toward 8-10 minutes or add a fifth; when tired, reduce to three reps or trim the target toward the lower bound. Keep it controlled so it never becomes a set of maximal efforts.",
+  },
+);
+
+const anaerobicRationale = citedRationale(
+  "Short efforts above VO2 range create high-intensity repeatability practice while the long recoveries keep the session from becoming threshold work.",
+  {
+    sourceIds: ["buchheit-laursen-2013-hiit-part-2", "coggan-power-zones"],
+    cautions: ["Skip or reduce this if you are carrying fatigue from recent hard sessions."],
+    whyItWorks:
+      "Brief efforts above VO2 intensity develop anaerobic power and the ability to repeat hard surges, while the long 2.5-minute recoveries clear fatigue between reps so each one stays genuinely high quality instead of sliding into threshold work. Repeatability, not single-effort peak power, is the target.",
+    whoShouldModify:
+      "Reduce the rep count or intensity when carrying fatigue, since quality collapses fast on anaerobic work; experienced riders can shorten the recoveries or add reps to raise the challenge. Newer riders should start with 6-8 reps and full recoveries.",
+  },
+);
 
 function baseWorkout(
   id: string,
@@ -68,10 +142,7 @@ export const workoutTemplates: WorkoutTemplate[] = [
     name: "Recovery Spin - 35",
     category: "recovery",
     description: "A low-stress aerobic spin for freshening the legs without adding meaningful load.",
-    rationale: citedRationale(
-      "Very easy endurance riding keeps intensity low and gives the rider a structured option for active recovery.",
-      ["Keep this truly easy; it should not feel like training stress."],
-    ),
+    rationale: recoveryRationale,
     defaultWorkout: baseWorkout(
       "recovery-spin-35",
       "Recovery Spin - 35",
@@ -106,9 +177,7 @@ export const workoutTemplates: WorkoutTemplate[] = [
           endPercentFTP: 35,
         }),
       ],
-      citedRationale(
-        "Very easy endurance riding keeps intensity low and gives the rider a structured option for active recovery.",
-      ),
+      recoveryRationale,
     ),
   },
   {
@@ -116,9 +185,7 @@ export const workoutTemplates: WorkoutTemplate[] = [
     name: "Endurance Builder - 60",
     category: "endurance",
     description: "A simple endurance ride with a steady aerobic target and a short progressive finish.",
-    rationale: citedRationale(
-      "Endurance work builds volume at sustainable intensity and keeps the main target below threshold.",
-    ),
+    rationale: enduranceRationale,
     defaultWorkout: baseWorkout(
       "endurance-builder-60",
       "Endurance Builder - 60",
@@ -161,9 +228,7 @@ export const workoutTemplates: WorkoutTemplate[] = [
           endPercentFTP: 40,
         }),
       ],
-      citedRationale(
-        "Endurance work builds volume at sustainable intensity and keeps the main target below threshold.",
-      ),
+      enduranceRationale,
     ),
   },
   {
@@ -171,9 +236,7 @@ export const workoutTemplates: WorkoutTemplate[] = [
     name: "Tempo Control - 3x8",
     category: "tempo",
     description: "Three tempo intervals with short recoveries for controlled sub-threshold pressure.",
-    rationale: citedRationale(
-      "Tempo work adds moderate aerobic pressure while staying clearly below threshold.",
-    ),
+    rationale: tempoRationale,
     defaultWorkout: baseWorkout(
       "tempo-control-3x8",
       "Tempo Control - 3x8",
@@ -224,7 +287,7 @@ export const workoutTemplates: WorkoutTemplate[] = [
           endPercentFTP: 35,
         }),
       ],
-      citedRationale("Tempo work adds moderate aerobic pressure while staying clearly below threshold."),
+      tempoRationale,
     ),
   },
   {
@@ -232,10 +295,7 @@ export const workoutTemplates: WorkoutTemplate[] = [
     name: "Sweet Spot Base - 3x10",
     category: "sweet-spot",
     description: "A classic sweet spot session with enough recovery to keep the efforts repeatable.",
-    rationale: citedRationale(
-      "Sweet spot intervals sit near threshold but remain slightly lower so riders can accumulate controlled work.",
-      ["If cadence or form falls apart, reduce the target range."],
-    ),
+    rationale: sweetSpotRationale,
     defaultWorkout: baseWorkout(
       "sweet-spot-base-3x10",
       "Sweet Spot Base - 3x10",
@@ -286,9 +346,7 @@ export const workoutTemplates: WorkoutTemplate[] = [
           endPercentFTP: 35,
         }),
       ],
-      citedRationale(
-        "Sweet spot intervals sit near threshold but remain slightly lower so riders can accumulate controlled work.",
-      ),
+      sweetSpotRationale,
     ),
   },
   {
@@ -296,9 +354,7 @@ export const workoutTemplates: WorkoutTemplate[] = [
     name: "Threshold Builder - 4x6",
     category: "threshold",
     description: "Repeatable threshold intervals for time near FTP without a long continuous test effort.",
-    rationale: citedRationale("Threshold intervals target sustainable high aerobic power around FTP.", [
-      "This should feel hard but controlled, not like repeated maximal efforts.",
-    ]),
+    rationale: thresholdRationale,
     defaultWorkout: baseWorkout(
       "threshold-builder-4x6",
       "Threshold Builder - 4x6",
@@ -349,7 +405,7 @@ export const workoutTemplates: WorkoutTemplate[] = [
           endPercentFTP: 35,
         }),
       ],
-      citedRationale("Threshold intervals target sustainable high aerobic power around FTP."),
+      thresholdRationale,
     ),
   },
   {
@@ -357,12 +413,7 @@ export const workoutTemplates: WorkoutTemplate[] = [
     name: "Anaerobic Pop - 12x30",
     category: "anaerobic",
     description: "Short high-power efforts with generous recovery for repeatable anaerobic work.",
-    rationale: {
-      summary:
-        "Short efforts above VO2 range create high-intensity repeatability practice while the long recoveries keep the session from becoming threshold work.",
-      sourceIds: ["buchheit-laursen-2013-hiit-part-2", "coggan-power-zones"],
-      cautions: ["Skip or reduce this if you are carrying fatigue from recent hard sessions."],
-    },
+    rationale: anaerobicRationale,
     defaultWorkout: baseWorkout(
       "anaerobic-pop-12x30",
       "Anaerobic Pop - 12x30",
@@ -412,12 +463,7 @@ export const workoutTemplates: WorkoutTemplate[] = [
           endPercentFTP: 35,
         }),
       ],
-      {
-        summary:
-          "Short efforts above VO2 range create high-intensity repeatability practice while the long recoveries keep the session from becoming threshold work.",
-        sourceIds: ["buchheit-laursen-2013-hiit-part-2", "coggan-power-zones"],
-        cautions: ["Skip or reduce this if you are carrying fatigue from recent hard sessions."],
-      },
+      anaerobicRationale,
     ),
   },
 ];

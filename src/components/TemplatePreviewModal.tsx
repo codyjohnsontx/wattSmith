@@ -234,6 +234,28 @@ export function TemplatePreviewModal({
                 </p>
               </div>
 
+              {template.rationale.whyItWorks ? (
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300">
+                    Why this works
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                    {template.rationale.whyItWorks}
+                  </p>
+                </div>
+              ) : null}
+
+              {template.rationale.whoShouldModify ? (
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300">
+                    Who should modify this
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                    {template.rationale.whoShouldModify}
+                  </p>
+                </div>
+              ) : null}
+
               {template.rationale.cautions.length > 0 ? (
                 <div>
                   <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-200">
