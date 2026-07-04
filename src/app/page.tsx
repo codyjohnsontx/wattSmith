@@ -452,30 +452,30 @@ export default function Home() {
         </header>
 
         {activeTab === "builder" ? (
-          <div className="grid gap-6 xl:grid-cols-[minmax(390px,0.95fr)_minmax(520px,1.45fr)_minmax(330px,0.85fr)]">
-            <WorkoutEditor
+          <div className="space-y-6">
+            <WorkoutChart
               workout={workout}
               selectedStepId={selectedStepId}
-              collapsedStepIds={collapsedStepIds}
               onSelectStep={setSelectedStepId}
-              onToggleCollapsedStep={toggleCollapsedStep}
-              onExpandAllSteps={expandAllSteps}
-              onCollapseAllSteps={collapseAllSteps}
-              onPruneCollapsedSteps={pruneCollapsedSteps}
-              onChange={updateWorkout}
-              validationIssues={validationIssues}
-              reusableBlocks={reusableBlocks}
-              onSaveReusableBlock={handleSaveReusableBlock}
-              onDeleteReusableBlock={handleDeleteReusableBlock}
             />
-            <div className="space-y-6">
-              <WorkoutChart
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]">
+              <WorkoutEditor
                 workout={workout}
                 selectedStepId={selectedStepId}
+                collapsedStepIds={collapsedStepIds}
                 onSelectStep={setSelectedStepId}
+                onToggleCollapsedStep={toggleCollapsedStep}
+                onExpandAllSteps={expandAllSteps}
+                onCollapseAllSteps={collapseAllSteps}
+                onPruneCollapsedSteps={pruneCollapsedSteps}
+                onChange={updateWorkout}
+                validationIssues={validationIssues}
+                reusableBlocks={reusableBlocks}
+                onSaveReusableBlock={handleSaveReusableBlock}
+                onDeleteReusableBlock={handleDeleteReusableBlock}
               />
+              <WorkoutSummary workout={workout} warnings={profileWarnings} />
             </div>
-            <WorkoutSummary workout={workout} warnings={profileWarnings} />
           </div>
         ) : null}
 
