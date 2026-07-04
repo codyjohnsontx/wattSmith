@@ -1,56 +1,83 @@
-# Export Testing: TrainerRoad Workout Creator
+# Export Testing
 
-Manual verification that Wattsmith `.mrc` / `.erg` exports import correctly into the TrainerRoad Workout Creator. Fill in the results matrix each time a full pass is run.
+Confidence that Wattsmith `.mrc` / `.erg` exports are correct comes from two layers:
 
-## Test Environment
+1. **Automated verification (primary, always run in CI).** Proves the emitted files reconstruct the intended workout, with no external app required.
+2. **Optional human visual check.** Import a fixture into any ERG/MRC-capable app you can actually log into and confirm the chart looks right. This is a sanity check, not the gate.
 
-| Field | Value |
-| --- | --- |
-| Date tested | _not yet run_ |
-| TrainerRoad Workout Creator version | |
-| OS | |
-| Wattsmith commit | |
-| Tester | |
+> The TrainerRoad Workout Creator is **not required**. Its macOS build is unreliable (login/import bugs), so it is treated as one optional target among several — not the source of truth.
 
-## Fixture Files
+## Layer 1: Automated Verification
 
-Reproducible test files live in `docs/export-fixtures/`. Regenerate them after any export-code change:
+Run:
+
+```shell
+npm run test
+```
+
+`src/lib/workout/exportVerification.test.ts` covers, for every fixture:
+
+- **Round-trip fidelity** — parses the emitted `[COURSE DATA]` back into a timeline and asserts it matches `flattenWorkout()`: segment count, start/end timestamps (minutes), MRC `%FTP` values, and ERG absolute watts.
+- **Total duration** — the final timestamp equals the workout's total duration.
+- **Monotonic time** — no jumbled or overlapping segments.
+- **Ramp slopes** — ramped segments export as sloped start≠end points, not steps.
+- **Repeat expansion** — repeat blocks expand into their full interval count.
+- **Cues** — `[COURSE TEXT]` events match the workout cues (timestamp, text, duration).
+- **Golden files** — the committed `docs/export-fixtures/*` are byte-for-byte identical to current exporter output, so any export-code change without regenerating fixtures fails the build.
+
+After any change to the export code, regenerate the fixtures so the golden test matches:
 
 ```shell
 npm run generate:export-fixtures
 ```
 
-Each fixture isolates one export feature (source data in `src/lib/workout/exportFixtures.ts`):
+## Layer 2: Optional Human Visual Check
+
+Reproducible test files live in `docs/export-fixtures/` (source data in `src/lib/workout/exportFixtures.ts`).
 
 | File(s) | Exercises |
 | --- | --- |
 | `fixture_steady_blocks.*` | Plain steady/recovery targets |
 | `fixture_ramps.*` | Ramped warmup and cooldown |
-| `fixture_ranges_low/midpoint/high.*` | Range targets under each range-export strategy. `generateExportFixtures.ts` writes each strategy to a `_low/_midpoint/_high`-suffixed file and passes that same suffixed base name into the exporter, so the embedded `FILE NAME =` header must match the on-disk filename — verify both. |
+| `fixture_ranges_low/midpoint/high.*` | Range targets under each range-export strategy. Each strategy is written to a `_low/_midpoint/_high`-suffixed file, and the embedded `FILE NAME =` header must match the on-disk filename — verify both. |
 | `fixture_repeats.*` | Repeat blocks with work/float children |
 | `fixture_cues.*` | Text cues as `[COURSE TEXT]` events |
 | `fixture_long_ride.*` | >4 hour workout (expected in-app timeline warning) |
 | `fixture_cafe_cremeux_1_60.*` | Special characters in workout name/description |
 
-## Manual Test Procedure
+### Recommended apps (pick one you can log into)
+
+| App | Access | Notes |
+| --- | --- | --- |
+| TrainerDay | Web | Import ERG/MRC, shows the workout graph. Low friction. |
+| intervals.icu | Web (free) | Workout library import; good for a quick visual compare. |
+| GoldenCheetah | Desktop (free, cross-platform) | Imports ERG/MRC; useful offline. |
+| TrainerRoad Workout Creator | Desktop | Optional. macOS build is known-flaky — skip if it will not log in. |
+
+### Procedure
 
 1. Regenerate fixtures (`npm run generate:export-fixtures`) so files match the current export code.
-2. Open the TrainerRoad Workout Creator on Mac or Windows.
-3. Drag a fixture file into the left sidebar.
-4. Verify against the Wattsmith preview for the same fixture:
-   - The chart shape matches (segment order, ramps rendered as slopes, repeats expanded).
+2. Import a fixture file into the app.
+3. Verify against the Wattsmith preview for the same fixture:
+   - Chart shape matches (segment order, ramps as slopes, repeats expanded).
    - Total duration matches.
    - Power targets match (MRC: %FTP values; ERG: absolute watts at FTP 200).
    - Text cues appear at the right timestamps (cue fixture only).
-5. Click Save/Publish.
-6. Open the TrainerRoad app, refresh the workout library, and confirm the workout appears under Workouts > Custom and its chart still looks correct.
-7. Record the result in the matrix below.
-8. For the custom-filename row: in Wattsmith, set a custom file name on the Export tab, download both formats, and confirm the downloaded filename and the embedded `FILE NAME =` header both use the custom name.
-9. For the three range-strategy rows: open each `fixture_ranges_<strategy>.{mrc,erg}` file and confirm the embedded `FILE NAME =` header matches the on-disk filename (e.g. `fixture_ranges_low.mrc` contains `FILE NAME = fixture_ranges_low.mrc`), not the unsuffixed `fixture_ranges` name. This is the same header/filename consistency checked for the custom-filename row.
+4. For the custom-filename check: in Wattsmith, set a custom file name on the Export tab, download both formats, and confirm the downloaded filename and the embedded `FILE NAME =` header both use the custom name.
+5. For the three range-strategy files: confirm each `fixture_ranges_<strategy>.{mrc,erg}` embeds a `FILE NAME =` header matching its on-disk filename (e.g. `fixture_ranges_low.mrc` contains `FILE NAME = fixture_ranges_low.mrc`).
+6. Record the result in the matrix below.
 
-## Results Matrix
+## Results Matrix (optional human pass)
 
 Legend: ✅ Pass · ❌ Fail · ⚠️ Partial (works with caveats, note them) · ⬜ Not tested
+
+| Field | Value |
+| --- | --- |
+| Date tested | _not yet run_ |
+| App / tool + version | |
+| OS | |
+| Wattsmith commit | |
+| Tester | |
 
 | Feature | MRC | ERG | Notes |
 | --- | --- | --- | --- |
@@ -67,7 +94,7 @@ Legend: ✅ Pass · ❌ Fail · ⚠️ Partial (works with caveats, note them) �
 
 ## Known Limitations
 
-- _None recorded yet._
+- Automated verification proves format/round-trip correctness, not that a specific third-party app accepts the file. Use Layer 2 for app-acceptance confidence.
 
 ## Follow-ups
 

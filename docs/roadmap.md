@@ -39,16 +39,19 @@ Wattsmith is a percentage-based cycling workout builder. The near-term goal is t
 - Recently edited as the default library sort with "Edited Nm ago" metadata on each saved workout.
 - Onboarding and filtered empty states for the saved and template library columns, with clear-filters and start-blank actions.
 - Export file naming controls with sanitization, readiness-check integration, and matching embedded file headers.
-- Committed export fixture files plus `npm run generate:export-fixtures` and a TrainerRoad testing procedure/results doc.
+- Committed export fixture files plus `npm run generate:export-fixtures` and an app-agnostic export testing procedure/results doc.
+- Automated export verification: round-trip parsing of emitted `.mrc`/`.erg` back to the workout timeline plus golden-file diffing against the committed fixtures, so export correctness no longer depends on a manual third-party-app pass.
+- Full-width, zone-colored workout chart with a shared zone table (`src/lib/workout/zones.ts`), hover crosshair with exact watts/%FTP readout, and intuitive tooltip pinning/dismissal.
 
-## Next Slice: Export Verification And Rationale
+## Next Slice: Rationale
 
-- Run the manual TrainerRoad Workout Creator pass in `docs/export-testing.md` and fill in the results matrix (human step).
-- Then start the P1 science/rationale work.
+- Export confidence is now covered by automated round-trip + golden-file verification (`npm run test`), so P0 no longer blocks the roadmap.
+- Start the P1 science/rationale work.
 
-## P0: Tighten Export Confidence
+## P0: Tighten Export Confidence — Done (automated)
 
-- Test exports manually in TrainerRoad Workout Creator and record results in `docs/export-testing.md` (fixtures and procedure are ready).
+- Export correctness is verified in-repo by `src/lib/workout/exportVerification.test.ts` (round-trip parse of `.mrc`/`.erg` vs the workout model, plus golden-file diffing against committed fixtures).
+- Optional: a one-time human visual pass in any ERG/MRC-capable app you can log into (TrainerDay, intervals.icu, GoldenCheetah). TrainerRoad's macOS Workout Creator is no longer required — see `docs/export-testing.md`.
 
 ## P1: Build Science And Rationale Without AI
 
@@ -100,6 +103,6 @@ Do not start this until the manual builder and rationale system are stronger.
 
 ## Recommended Next Slice
 
-1. Complete the manual TrainerRoad export pass and document results in `docs/export-testing.md`.
-2. Add workout-specific rationale for every template.
-3. Add citation badges/cards backed by the approved source registry.
+1. Add workout-specific rationale for every template.
+2. Add citation badges/cards backed by the approved source registry.
+3. (Optional) Run a one-time human visual export pass in a usable app and note results in `docs/export-testing.md`.
