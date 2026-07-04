@@ -1,16 +1,7 @@
 import { averagePercent, roundOne } from "./math";
 import { flattenWorkout } from "./flatten";
 import type { FlattenedSegment, Workout, WorkoutSummary, ZoneSummary } from "./types";
-
-const zones = [
-  { id: "recovery", label: "Recovery", range: "<55%", min: 0, max: 54.999 },
-  { id: "endurance", label: "Endurance", range: "55-75%", min: 55, max: 75 },
-  { id: "tempo", label: "Tempo", range: "76-87%", min: 76, max: 87 },
-  { id: "sweet-spot", label: "Sweet Spot", range: "88-94%", min: 88, max: 94 },
-  { id: "threshold", label: "Threshold", range: "95-105%", min: 95, max: 105 },
-  { id: "vo2", label: "VO2", range: "106-120%", min: 106, max: 120 },
-  { id: "anaerobic", label: "Anaerobic", range: ">120%", min: 120.001, max: Infinity },
-];
+import { zoneForPercent, zones } from "./zones";
 
 function segmentAverageWatts(segment: FlattenedSegment): number {
   return (segment.startWatts + segment.endWatts) / 2;
@@ -18,10 +9,6 @@ function segmentAverageWatts(segment: FlattenedSegment): number {
 
 function segmentAveragePercent(segment: FlattenedSegment): number {
   return averagePercent(segment.startPercentFTP, segment.endPercentFTP);
-}
-
-function zoneForPercent(percent: number) {
-  return zones.find((zone) => percent >= zone.min && percent <= zone.max) ?? zones[0];
 }
 
 export function calculateWorkoutSummary(workout: Workout): WorkoutSummary {

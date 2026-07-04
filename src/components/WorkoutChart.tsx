@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flattenWorkout } from "@/lib/workout/flatten";
 import { formatClock } from "@/lib/workout/math";
 import type { FlattenedSegment, Workout } from "@/lib/workout/types";
+import { zoneForPercent, zones } from "@/lib/workout/zones";
 
 interface WorkoutChartProps {
   workout: Workout;
@@ -18,31 +19,6 @@ const tooltipWidth = 260;
 const tooltipHeight = 116;
 const tooltipOffset = 14;
 const referencePercents = [0, 50, 75, 100, 120];
-
-interface Zone {
-  id: string;
-  label: string;
-  max: number;
-  color: string;
-}
-
-// Single source of truth for intensity zones. Ranges align with the Summary
-// zones in src/lib/workout/summary.ts so the chart and Summary agree, and the
-// ordered colors (grey → green → red) drive the profile fill, the accent, the
-// zone label, and the legend.
-const zones: Zone[] = [
-  { id: "recovery", label: "Recovery", max: 54.999, color: "#64748b" },
-  { id: "endurance", label: "Endurance", max: 75, color: "#22c55e" },
-  { id: "tempo", label: "Tempo", max: 87, color: "#84cc16" },
-  { id: "sweet-spot", label: "Sweet Spot", max: 94, color: "#eab308" },
-  { id: "threshold", label: "Threshold", max: 105, color: "#f59e0b" },
-  { id: "vo2", label: "VO2", max: 120, color: "#f97316" },
-  { id: "anaerobic", label: "Anaerobic", max: Infinity, color: "#ef4444" },
-];
-
-function zoneForPercent(percent: number): Zone {
-  return zones.find((zone) => percent <= zone.max) ?? zones[zones.length - 1];
-}
 
 function segmentColor(segment: FlattenedSegment) {
   const avgPercent = (segment.startPercentFTP + segment.endPercentFTP) / 2;
@@ -467,7 +443,8 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
     setPinnedSegmentId(undefined);
   }, []);
 
-  // Dismiss a pinned tooltip when the user clicks anywhere outside the chart.
+  // While a tooltip is pinned, dismiss it on an outside click or on Escape from
+  // anywhere (including when focus has moved to the tooltip's close button).
   useEffect(() => {
     if (!pinnedSegmentId) return;
 
@@ -478,8 +455,18 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
       }
     };
 
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        clearPinnedTooltip();
+      }
+    };
+
     document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [pinnedSegmentId, clearPinnedTooltip]);
 
   const pathPoints: string[] = [];
