@@ -32,8 +32,18 @@ export function ProfileSettings({ initialProfile }: { initialProfile: AthletePro
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(nextProfile),
     })
-      .then((response) => {
-        if (!response.ok) throw new Error("Could not save profile.");
+      .then(async (response) => {
+        if (!response.ok) {
+          const body = await response.json().catch(() => undefined);
+          const message =
+            typeof body?.error === "string"
+              ? body.error
+              : Array.isArray(body?.errors)
+                ? body.errors.join(" ")
+                : "Could not save profile.";
+          throw new Error(message);
+        }
+
         return response.json() as Promise<AthleteProfile>;
       })
       .then((savedProfile) => {

@@ -51,12 +51,23 @@ export async function POST(request: Request) {
           });
         }
 
+        const workoutIds = [...new Set(result.workouts.map((workout) => workout.id))];
+        const existingWorkouts =
+          workoutIds.length > 0
+            ? await tx.structuredWorkout.findMany({
+                where: { id: { in: workoutIds } },
+                select: { id: true, userId: true },
+              })
+            : [];
+        const existingWorkoutById = new Map(
+          existingWorkouts.map((workout) => [workout.id, workout]),
+        );
+
         let count = 0;
         for (const workout of result.workouts) {
           const input = workoutToStructuredInput(workout);
-          const existing = await tx.structuredWorkout.findUnique({
-            where: { id: workout.id },
-          });
+          const existing = existingWorkoutById.get(workout.id);
+          const createId = existing ? `workout-${randomUUID()}` : workout.id;
 
           if (existing?.userId === user.id) {
             await tx.structuredWorkout.update({
@@ -67,16 +78,22 @@ export async function POST(request: Request) {
             await tx.structuredWorkout.create({
               data: {
                 ...input,
-                id: existing ? `workout-${randomUUID()}` : input.id,
+                id: createId,
                 userId: user.id,
               },
             });
+            if (!existing) {
+              existingWorkoutById.set(createId, { id: createId, userId: user.id });
+            }
           }
 
           count += 1;
         }
 
         return count;
+      }, {
+        maxWait: 5_000,
+        timeout: 15_000,
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

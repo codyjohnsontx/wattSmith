@@ -1,2 +1,2 @@
 -- CreateIndex
-CREATE INDEX CONCURRENTLY "Account_userId_idx" ON "Account"("userId");
+CREATE INDEX "Account_userId_idx" ON "Account"("userId");
