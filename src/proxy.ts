@@ -1,13 +1,30 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 
-const protectedApiPrefixes = ["/api/profile", "/api/workouts", "/api/migration"];
+export const config = {
+  matcher: [
+    "/app/:path*",
+    "/workouts/:path*",
+    "/settings/:path*",
+    "/api/profile/:path*",
+    "/api/workouts/:path*",
+    "/api/migration/:path*",
+  ],
+};
+
+const protectedRoutePrefixes = config.matcher.map((matcher) => matcher.replace("/:path*", ""));
+
+function matchesProtectedRoute(pathname: string, type: "api" | "page") {
+  return protectedRoutePrefixes.some((prefix) => {
+    const isApiRoute = prefix.startsWith("/api/");
+    return (type === "api" ? isApiRoute : !isApiRoute) && pathname.startsWith(prefix);
+  });
+}
 
 export default auth((request) => {
   const { pathname } = request.nextUrl;
-  const isProtectedApi = protectedApiPrefixes.some((prefix) => pathname.startsWith(prefix));
-  const isProtectedPage =
-    pathname.startsWith("/app") || pathname.startsWith("/workouts") || pathname.startsWith("/settings");
+  const isProtectedApi = matchesProtectedRoute(pathname, "api");
+  const isProtectedPage = matchesProtectedRoute(pathname, "page");
 
   if (!request.auth && isProtectedApi) {
     return Response.json({ error: "Authentication required" }, { status: 401 });
@@ -21,7 +38,3 @@ export default auth((request) => {
 
   return NextResponse.next();
 });
-
-export const config = {
-  matcher: ["/app/:path*", "/workouts/:path*", "/settings/:path*", "/api/profile/:path*", "/api/workouts/:path*", "/api/migration/:path*"],
-};

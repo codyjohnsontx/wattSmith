@@ -21,7 +21,9 @@ export function validateWorkoutPayload(value: unknown): WorkoutValidationResult 
     .filter((issue) => issue.severity === "error")
     .map((issue) => issue.message);
 
-  if (!workout.id.trim()) errors.push("Workout id is required.");
+  if (typeof workout.id !== "string" || !workout.id.trim()) {
+    errors.push("Workout id is required.");
+  }
   if (typeof workout.description !== "string") errors.push("Workout description is required.");
   if (!workout.createdAt || Number.isNaN(Date.parse(workout.createdAt))) {
     errors.push("Workout createdAt must be an ISO date string.");

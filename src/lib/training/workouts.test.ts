@@ -1,4 +1,4 @@
-import type { StructuredWorkout } from "@prisma/client";
+import { Prisma, type StructuredWorkout } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { defaultWorkout } from "@/lib/workout/defaultWorkout";
 import { canAccessOwnedRecord, structuredWorkoutToWorkout, validateWorkoutPayload, workoutToStructuredInput } from "./workouts";
@@ -12,9 +12,9 @@ function dbWorkout(overrides: Partial<StructuredWorkout> = {}): StructuredWorkou
     category: "threshold",
     favorite: true,
     ftp: 250,
-    blocksJson: defaultWorkout.blocks,
-    cuesJson: defaultWorkout.cues ?? [],
-    rationaleJson: defaultWorkout.rationale ?? null,
+    blocksJson: defaultWorkout.blocks as unknown as Prisma.JsonValue,
+    cuesJson: (defaultWorkout.cues ?? []) as unknown as Prisma.JsonValue,
+    rationaleJson: (defaultWorkout.rationale ?? null) as unknown as Prisma.JsonValue,
     createdAt: new Date("2026-07-01T00:00:00.000Z"),
     updatedAt: new Date("2026-07-02T00:00:00.000Z"),
     ...overrides,
@@ -47,6 +47,15 @@ describe("workout DTO mapping", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toContain("FTP must be greater than zero.");
+    }
+  });
+
+  it("rejects workouts without a usable string id", () => {
+    const result = validateWorkoutPayload({ ...defaultWorkout, id: 123 });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors).toContain("Workout id is required.");
     }
   });
 

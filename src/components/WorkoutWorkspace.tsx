@@ -134,6 +134,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
   const [collapsedStepIds, setCollapsedStepIds] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState("Ready");
   const statusTimeoutRef = useRef<number | undefined>(undefined);
+  const editorPristineRef = useRef(true);
   const workout = workoutHistory.present;
   const canUndoWorkout = canUndoWorkoutHistory(workoutHistory);
   const canRedoWorkout = canRedoWorkoutHistory(workoutHistory);
@@ -177,6 +178,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
   );
 
   const updateWorkout = useCallback((nextWorkout: Workout) => {
+    editorPristineRef.current = false;
     setWorkoutHistory((current) => pushWorkoutHistory(current, normalizeWorkout(nextWorkout)));
   }, []);
 
@@ -216,10 +218,12 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
         setIntegrations(loadIntegrationConnections());
         setCustomReusableBlocks(loadReusableBlocks());
 
-        if (serverWorkouts[0]) {
-          replaceActiveWorkout(serverWorkouts[0]);
-        } else {
-          replaceActiveWorkout({ ...cloneDefaultWorkout(), ftp: serverProfile.ftp });
+        if (editorPristineRef.current) {
+          if (serverWorkouts[0]) {
+            replaceActiveWorkout(serverWorkouts[0]);
+          } else {
+            replaceActiveWorkout({ ...cloneDefaultWorkout(), ftp: serverProfile.ftp });
+          }
         }
 
         setStatus("Ready");
@@ -369,6 +373,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
   };
 
   const handleNewWorkout = () => {
+    editorPristineRef.current = false;
     const nextWorkout = createBlankWorkout(profile.ftp);
     replaceActiveWorkout(nextWorkout);
     setActiveTab("builder");
@@ -523,6 +528,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
               <button
                 type="button"
                 onClick={() => {
+                  editorPristineRef.current = false;
                   const starter = { ...cloneDefaultWorkout(), ftp: profile.ftp };
                   replaceActiveWorkout(starter);
                   flashStatus("Reset to starter");
@@ -569,6 +575,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
             activeFtp={workout.ftp}
             profile={profile}
             onLoad={(nextWorkout) => {
+              editorPristineRef.current = false;
               replaceActiveWorkout(nextWorkout);
               setActiveTab("builder");
               flashStatus("Loaded workout");

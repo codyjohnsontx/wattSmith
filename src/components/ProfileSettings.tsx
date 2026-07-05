@@ -2,15 +2,27 @@
 
 import { ProfilePanel } from "@/components/ProfilePanel";
 import { cloneDefaultWorkout } from "@/lib/workout/defaultWorkout";
-import { defaultIntegrationConnections } from "@/lib/workout/storage";
-import type { AthleteProfile } from "@/lib/workout/types";
-import { useMemo, useState } from "react";
+import { loadIntegrationConnections } from "@/lib/workout/storage";
+import type { AthleteProfile, IntegrationConnection } from "@/lib/workout/types";
+import { useEffect, useMemo, useState } from "react";
 
 export function ProfileSettings({ initialProfile }: { initialProfile: AthleteProfile }) {
   const [profile, setProfile] = useState(initialProfile);
+  const [integrations, setIntegrations] = useState<IntegrationConnection[]>([]);
+  const [error, setError] = useState("");
   const workout = useMemo(() => ({ ...cloneDefaultWorkout(), ftp: profile.ftp }), [profile.ftp]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setIntegrations(loadIntegrationConnections());
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+
   const updateProfile = (nextProfile: AthleteProfile) => {
+    const previousProfile = profile;
+    setError("");
     setProfile(nextProfile);
     void fetch("/api/profile", {
       method: "PATCH",
@@ -22,7 +34,10 @@ export function ProfileSettings({ initialProfile }: { initialProfile: AthletePro
         return response.json() as Promise<AthleteProfile>;
       })
       .then(setProfile)
-      .catch(() => setProfile(nextProfile));
+      .catch((saveError) => {
+        setProfile(previousProfile);
+        setError(saveError instanceof Error ? saveError.message : "Could not save profile.");
+      });
   };
 
   return (
@@ -30,9 +45,14 @@ export function ProfileSettings({ initialProfile }: { initialProfile: AthletePro
       <ProfilePanel
         profile={profile}
         workout={workout}
-        integrations={defaultIntegrationConnections}
+        integrations={integrations}
         onChange={updateProfile}
       />
+      {error ? (
+        <p className="mt-4 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-100">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

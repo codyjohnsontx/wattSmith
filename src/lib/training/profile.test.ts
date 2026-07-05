@@ -43,4 +43,22 @@ describe("profile validation", () => {
       expect(result.errors).toContain("availableDays must only contain Mon through Sun.");
     }
   });
+
+  it("rejects unrealistic profile numeric values", () => {
+    const result = validateProfilePayload({
+      ...validProfile,
+      ftp: 2501,
+      weeklyHours: 41,
+      preferredWorkoutDurationMinutes: 481,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors).toContain("ftp must be no more than 2000.");
+      expect(result.errors).toContain("weeklyHours must be no more than 40.");
+      expect(result.errors).toContain(
+        "preferredWorkoutDurationMinutes must be no more than 480.",
+      );
+    }
+  });
 });

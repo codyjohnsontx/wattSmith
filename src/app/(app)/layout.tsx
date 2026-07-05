@@ -1,9 +1,21 @@
 import { signOut } from "@/auth";
-import { requireUser } from "@/lib/server/auth";
+import { AuthenticationError, requireUser } from "@/lib/server/auth";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireUser();
+  let user: Awaited<ReturnType<typeof requireUser>>;
+
+  try {
+    user = await requireUser();
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      redirect("/sign-in");
+    }
+
+    throw error;
+  }
+
   const identity = user.name || user.email || "Signed-in athlete";
 
   return (

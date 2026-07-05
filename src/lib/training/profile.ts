@@ -5,6 +5,10 @@ import type { AthleteProfile } from "@/lib/workout/types";
 export const experienceLevels = ["new", "recreational", "serious", "competitive", "elite"] as const;
 export const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
+const maxFtp = 2000;
+const maxWeeklyHours = 40;
+const maxPreferredWorkoutDurationMinutes = 480;
+
 export type ProfileValidationResult =
   | { success: true; profile: AthleteProfile }
   | { success: false; errors: string[] };
@@ -32,6 +36,8 @@ export function validateProfilePayload(value: unknown): ProfileValidationResult 
   const ftp = Number(value.ftp);
   if (!Number.isFinite(ftp) || ftp < 1) {
     errors.push("ftp must be at least 1.");
+  } else if (ftp > maxFtp) {
+    errors.push(`ftp must be no more than ${maxFtp}.`);
   }
 
   const experienceLevel = value.experienceLevel;
@@ -42,6 +48,8 @@ export function validateProfilePayload(value: unknown): ProfileValidationResult 
   const weeklyHours = Number(value.weeklyHours);
   if (!Number.isFinite(weeklyHours) || weeklyHours < 0) {
     errors.push("weeklyHours must be at least 0.");
+  } else if (weeklyHours > maxWeeklyHours) {
+    errors.push(`weeklyHours must be no more than ${maxWeeklyHours}.`);
   }
 
   const availableDays = parseStringArray(value.availableDays, "availableDays", errors);
@@ -68,6 +76,10 @@ export function validateProfilePayload(value: unknown): ProfileValidationResult 
   const preferredWorkoutDurationMinutes = Number(value.preferredWorkoutDurationMinutes);
   if (!Number.isFinite(preferredWorkoutDurationMinutes) || preferredWorkoutDurationMinutes < 15) {
     errors.push("preferredWorkoutDurationMinutes must be at least 15.");
+  } else if (preferredWorkoutDurationMinutes > maxPreferredWorkoutDurationMinutes) {
+    errors.push(
+      `preferredWorkoutDurationMinutes must be no more than ${maxPreferredWorkoutDurationMinutes}.`,
+    );
   }
 
   const constraints = parseStringArray(value.constraints, "constraints", errors);
