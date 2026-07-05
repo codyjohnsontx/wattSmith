@@ -4,12 +4,13 @@ import { ProfilePanel } from "@/components/ProfilePanel";
 import { cloneDefaultWorkout } from "@/lib/workout/defaultWorkout";
 import { loadIntegrationConnections } from "@/lib/workout/storage";
 import type { AthleteProfile, IntegrationConnection } from "@/lib/workout/types";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export function ProfileSettings({ initialProfile }: { initialProfile: AthleteProfile }) {
   const [profile, setProfile] = useState(initialProfile);
   const [integrations, setIntegrations] = useState<IntegrationConnection[]>([]);
   const [error, setError] = useState("");
+  const saveVersionRef = useRef(0);
   const workout = useMemo(() => ({ ...cloneDefaultWorkout(), ftp: profile.ftp }), [profile.ftp]);
 
   useEffect(() => {
@@ -22,6 +23,8 @@ export function ProfileSettings({ initialProfile }: { initialProfile: AthletePro
 
   const updateProfile = (nextProfile: AthleteProfile) => {
     const previousProfile = profile;
+    const saveVersion = saveVersionRef.current + 1;
+    saveVersionRef.current = saveVersion;
     setError("");
     setProfile(nextProfile);
     void fetch("/api/profile", {
@@ -33,10 +36,16 @@ export function ProfileSettings({ initialProfile }: { initialProfile: AthletePro
         if (!response.ok) throw new Error("Could not save profile.");
         return response.json() as Promise<AthleteProfile>;
       })
-      .then(setProfile)
+      .then((savedProfile) => {
+        if (saveVersionRef.current === saveVersion) {
+          setProfile(savedProfile);
+        }
+      })
       .catch((saveError) => {
-        setProfile(previousProfile);
-        setError(saveError instanceof Error ? saveError.message : "Could not save profile.");
+        if (saveVersionRef.current === saveVersion) {
+          setProfile(previousProfile);
+          setError(saveError instanceof Error ? saveError.message : "Could not save profile.");
+        }
       });
   };
 
