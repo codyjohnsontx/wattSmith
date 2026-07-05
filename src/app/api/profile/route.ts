@@ -1,4 +1,4 @@
-import type { AthleteProfile as DbAthleteProfile } from "@prisma/client";
+import { Prisma, type AthleteProfile as DbAthleteProfile } from "@prisma/client";
 import { authenticationErrorResponse, requireUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import {
@@ -84,12 +84,23 @@ export async function PATCH(request: Request) {
         where: { userId: user.id },
       });
     } else {
-      profile = await db.athleteProfile.create({
-        data: {
-          userId: user.id,
-          ...profileToDbInput(result.profile),
-        },
-      });
+      try {
+        profile = await db.athleteProfile.create({
+          data: {
+            userId: user.id,
+            ...profileToDbInput(result.profile),
+          },
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          return Response.json(
+            { error: "Profile has changed since this edit started. Refresh and try again." },
+            { status: 409 },
+          );
+        }
+
+        throw error;
+      }
     }
 
     return Response.json(dbProfileToAthleteProfile(profile));

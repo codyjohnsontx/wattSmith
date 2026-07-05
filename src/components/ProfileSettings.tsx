@@ -34,6 +34,11 @@ export function ProfileSettings({ initialProfile }: { initialProfile: AthletePro
     })
       .then(async (response) => {
         if (!response.ok) {
+          if (response.status === 401) {
+            window.location.assign("/sign-in");
+            throw new Error("Session expired. Redirecting to sign in.");
+          }
+
           const body = await response.json().catch(() => undefined);
           const message =
             typeof body?.error === "string"

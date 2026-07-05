@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { db } from "@/lib/server/db";
 
@@ -82,5 +83,37 @@ describe("profile API route", () => {
       error: "Profile has changed since this edit started. Refresh and try again.",
     });
     expect(athleteProfile.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it("returns conflict when profile creation races another request", async () => {
+    mockAuth.mockResolvedValue({
+      user: {
+        id: "user-1",
+        name: null,
+        email: null,
+        image: null,
+      },
+    });
+    athleteProfile.findUnique.mockResolvedValue(null);
+    athleteProfile.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+        meta: { target: ["userId"] },
+      }),
+    );
+
+    const { PATCH } = await import("./route");
+    const response = await PATCH(
+      new Request("http://localhost/api/profile", {
+        method: "PATCH",
+        body: JSON.stringify(validProfile),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Profile has changed since this edit started. Refresh and try again.",
+    });
   });
 });
