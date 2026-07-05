@@ -1,108 +1,135 @@
-# Wattsmith Roadmap
+# Wattsmith Product Roadmap
 
-Wattsmith is a percentage-based cycling workout builder. The near-term goal is to make the manual builder, workout library, training rationale, metrics, and export flow strong before adding AI/RAG functionality.
+Wattsmith is becoming a dense cycling training command center inspired by Intervals-style workflows: fast workout creation, athlete context, planned training, completed ride analysis, and clear fitness/load signals in one focused app.
 
-## Product Direction
+## Product North Star
 
-- Build a trustworthy workout builder first.
-- Keep workouts reusable by storing FTP percentage targets, ranges, ramps, and repeat blocks.
-- Make the chart, summary, rationale, and export output agree from the same workout model.
-- Prepare the data model for future AI/RAG, but do not add the AI layer yet.
+Build the single-athlete cycling workspace a rider can open every day to decide what to ride, understand recent training, compare planned work against actual rides, and maintain a reusable workout library without leaving the calendar/dashboard context.
 
-## Completed Recently
+## Current State
 
-- Template preview before loading.
-- Collapse/expand for blocks and repeat children.
-- Start from blank.
-- Basic template duplication/use flow.
-- Export validation checklist.
-- `.mrc` / `.erg` previews.
-- Basic profile fields and warnings.
-- Starter cited rationale/source registry.
-- Session-only undo/redo for workout edits.
-- Keyboard shortcuts for undo/redo.
-- Inline validation per workout/block/cue.
-- Builder validation aligned with export validation.
-- Builder Trust test coverage.
-- Reusable block library with protected starter blocks and user-created custom blocks.
-- Custom block manager for creating, editing, duplicating, deleting, and inserting workout blocks.
-- Save-from-workout flow for turning any block or repeat into a reusable component.
-- Snapshot insertion so reusable block edits do not mutate existing workouts.
-- Reusable block validation/export test coverage.
-- Expanded protected starter palette to 60 reusable blocks across warmup, endurance, tempo, sweet spot, threshold, VO2, anaerobic, recovery, cooldown, and general categories.
-- Grouped reusable block palette with searchable custom and starter shelves.
-- Drag/drop workout building with explicit root/repeat-child drop joints, magnetic insertion previews, and one-step undo/redo commits.
-- Workout block drag handles for root and repeat-child reordering, including valid moves between root and repeat containers.
-- Reusable block modal accessibility hardening with dialog semantics, focus trapping, Escape close, and safer localStorage persistence.
-- Library sort (recently edited, duration, name, hardest) with derived difficulty filtering alongside search and category.
-- Favorite/starred workouts pinned to the top of the saved list, persisted without touching edit timestamps.
-- Recently edited as the default library sort with "Edited Nm ago" metadata on each saved workout.
-- Onboarding and filtered empty states for the saved and template library columns, with clear-filters and start-blank actions.
-- Export file naming controls with sanitization, readiness-check integration, and matching embedded file headers.
-- Committed export fixture files plus `npm run generate:export-fixtures` and an app-agnostic export testing procedure/results doc.
-- Automated export verification: round-trip parsing of emitted `.mrc`/`.erg` back to the workout timeline plus golden-file diffing against the committed fixtures, so export correctness no longer depends on a manual third-party-app pass.
-- Full-width, zone-colored workout chart with a shared zone table (`src/lib/workout/zones.ts`), hover crosshair with exact watts/%FTP readout, and intuitive tooltip pinning/dismissal.
+- Local-first percentage-based workout builder.
+- Saved workouts, reusable blocks, profile assumptions, favorites, and integrations are browser-local.
+- Export flow supports `.mrc` and `.erg` previews, validation, file naming, and committed fixture tests.
+- Training rationale/source notes exist for templates and workouts.
+- Profile assumptions drive warnings but are not account-backed.
 
-## Next Slice: Rationale
+## Accepted MVP Scope
 
-- Export confidence is now covered by automated round-trip + golden-file verification (`npm run test`), so P0 no longer blocks the roadmap.
-- Start the P1 science/rationale work.
+- Single-athlete product.
+- Cycling-first training model.
+- Cloud-backed authentication and persistence.
+- Strava-first integration later, not in phase 1.
+- Dense calendar/dashboard as the primary future workspace.
+- Existing workout builder remains a core workflow, not a side utility.
 
-## P0: Tighten Export Confidence — Done (automated)
+## Phase Breakdown
 
-- Export correctness is verified in-repo by `src/lib/workout/exportVerification.test.ts` (round-trip parse of `.mrc`/`.erg` vs the workout model, plus golden-file diffing against committed fixtures).
-- Optional: a one-time human visual pass in any ERG/MRC-capable app you can log into (TrainerDay, intervals.icu, GoldenCheetah). TrainerRoad's macOS Workout Creator is no longer required — see `docs/export-testing.md`.
+### Phase 1: Auth, Database, Server-Backed Profile/Workouts
 
-## P1: Build Science And Rationale Without AI
+- Add Auth.js sign-in.
+- Add Postgres persistence through Prisma.
+- Create server-backed athlete profile.
+- Persist saved workouts to the database while preserving the current `Workout` editor shape.
+- Add one-time import from existing browser-local profile/workouts.
+- Protect app and API routes that require a signed-in user.
 
-- Add workout-specific rationale for every template.
-- Add approved source registry.
-- Add citation badges/cards.
-- Add "why this workout works" section.
-- Add "who should modify this" section.
-- Add beginner, standard, and advanced versions for templates.
+### Phase 2: Calendar And Planned Sessions
 
-## P1: Improve Training Metrics
+- Add planned session model.
+- Build dense calendar/dashboard view.
+- Allow workouts to be scheduled, moved, completed, or removed from plan.
+- Show upcoming work and weekly structure from server data.
 
-- Make IF/TSS/NP-style estimates clearer and cite assumptions.
-- Add intensity distribution visualization.
-- Add work/rest ratio.
-- Add total time above FTP.
-- Add high-intensity density warning.
-- Add estimated kJ explanation.
+### Phase 3: Strava Sync And Activity Ingestion
 
-## P1: Make Athlete Profile Useful
+- Add Strava OAuth.
+- Import completed rides.
+- Store activity summaries and relevant streams.
+- Reconcile completed activities with planned sessions.
 
-- Add preferred workout duration.
-- Add weekly training hours.
-- Add experience level.
-- Add event type/goal.
-- Add constraints.
-- Use profile fields for non-AI warnings:
-  - Workout is above preferred duration.
-  - Workout has a lot of VO2 time for a new rider.
-  - Workout is mostly recovery, endurance, threshold, VO2, or anaerobic.
+### Phase 4: Fitness/Load Analytics
 
-## P2: Prepare For Future AI/RAG
+- Add load metrics such as CTL, ATL, form, weekly load, and intensity distribution.
+- Explain calculation assumptions in-product.
+- Keep analytics cycling-first and athlete-scoped.
 
-- Add `WorkoutIntent` type.
-- Add `WorkoutRationale` coverage for templates and workouts.
-- Add `Source` registry.
-- Add `DecisionNote` or `TrainingExplanation` type.
-- Add schema validation for generated/imported workouts.
-- Keep all workouts percentage-based and export-safe.
+### Phase 5: Activity Detail And Planned-Vs-Actual
 
-## Later: AI/RAG Layer
+- Add activity detail pages.
+- Compare completed rides against planned workouts.
+- Surface compliance, missed targets, and notable training outcomes.
 
-Do not start this until the manual builder and rationale system are stronger.
+### Phase 6: Power Curve And Activity Table
 
-- AI assistant can suggest, explain, and revise workouts.
-- RAG answers must cite approved sources.
-- Generated workouts must validate against the same workout model before display/export.
-- User remains in control of accepting, editing, or rejecting suggestions.
+- Add power curve views.
+- Add dense activity table with filtering and sorting.
+- Connect activity table, power curve, and calendar/dashboard drilldowns.
 
-## Recommended Next Slice
+## Phase 1 Implementation Checklist
 
-1. Add workout-specific rationale for every template.
-2. Add citation badges/cards backed by the approved source registry.
-3. (Optional) Run a one-time human visual export pass in a usable app and note results in `docs/export-testing.md`.
+- Replace local-only profile persistence with `GET /api/profile` and `PATCH /api/profile`.
+- Replace saved workout persistence with authenticated workout APIs.
+- Keep reusable workout blocks local in phase 1 unless they block workout import/save behavior.
+- Add Prisma models for Auth.js users/accounts/sessions plus `AthleteProfile` and `StructuredWorkout`.
+- Store workout blocks/cues/rationale as JSON in phase 1.
+- Keep workout-level FTP on `StructuredWorkout`.
+- Add GitHub OAuth as the first provider.
+- Add authenticated app shell with Dashboard, Workouts, and Settings.
+- Redirect `/` based on auth state.
+- Add one-time local import prompt after sign-in.
+- Do not delete local storage automatically.
+- Preserve existing builder, library, chart, validation, and export behavior.
+- Keep `npm run test`, `npm run lint`, and `npm run build` passing.
+
+## Known Decisions And Defaults
+
+- Auth: Auth.js through `next-auth`.
+- First provider: GitHub OAuth.
+- Database: Postgres.
+- ORM: Prisma.
+- Package manager: npm.
+- Architecture: single Next app.
+- Workout storage: JSON-backed `StructuredWorkout` records in phase 1.
+- Profile arrays: Postgres string arrays for `availableDays` and `constraints`.
+- Authorization: all profile/workout queries are scoped to the signed-in user.
+
+## Deferred Scope
+
+- Strava OAuth and sync.
+- Calendar/planned-session database model.
+- Activity ingestion.
+- CTL/ATL/form calculations.
+- Workout execution matching.
+- Multi-athlete or coaching support.
+- Fully normalized workout-step database schema.
+- Production deployment automation.
+- AI/RAG assistant work.
+
+## Completed Builder Foundation
+
+- Template preview, duplication, and start-from-blank flows.
+- Collapse/expand and drag/drop workout editing.
+- Session-only undo/redo and keyboard shortcuts.
+- Inline validation aligned with export validation.
+- Reusable block library with protected starter blocks and custom block manager.
+- Saved workout library search, sort, difficulty filtering, favorites, and onboarding/empty states.
+- `.mrc` / `.erg` previews, file naming controls, and export readiness checks.
+- Automated export verification through round-trip parsing and golden-file fixture diffs.
+- Full-width zone-colored workout chart with hover/pin readouts.
+- Basic athlete profile fields, warnings, integration placeholders, and cited rationale/source registry.
+
+## Acceptance Criteria
+
+Phase 1 is complete when:
+
+- This roadmap is the canonical Intervals-style product roadmap.
+- The app supports Auth.js sign-in.
+- The app has a Prisma-backed Postgres schema.
+- Athlete profile persists to the database.
+- Saved workouts persist to the database.
+- Current workout builder/editor/export behavior still works.
+- Existing local workouts can be imported once after sign-in.
+- Protected app routes require authentication.
+- Tests, lint, and build pass.
+- The app is ready for phase 2 calendar planning without another persistence refactor.

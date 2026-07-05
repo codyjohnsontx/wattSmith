@@ -23,9 +23,9 @@ export function ProfilePanel({ profile, workout, integrations, onChange }: Profi
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">
           Profile
         </p>
-        <h2 className="mt-1 text-xl font-semibold text-slate-50">Local athlete assumptions</h2>
+        <h2 className="mt-1 text-xl font-semibold text-slate-50">Athlete profile</h2>
         <p className="mt-2 text-sm leading-6 text-slate-400">
-          Stored locally for defaults and warnings. No account or backend is used.
+          Stored on the server for workout defaults, warnings, and future planning.
         </p>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -169,7 +169,7 @@ export function ProfilePanel({ profile, workout, integrations, onChange }: Profi
             Integrations
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Integration types are modeled for a future Strava import spike. No live sync is active.
+            Strava is planned for phase 3. No live sync is active yet.
           </p>
           <div className="mt-4 space-y-2">
             {integrations.map((connection) => (
@@ -179,7 +179,7 @@ export function ProfilePanel({ profile, workout, integrations, onChange }: Profi
               >
                 <span className="capitalize text-slate-100">{connection.provider}</span>
                 <span className="rounded-full bg-slate-800 px-2.5 py-1 text-xs text-slate-400">
-                  Coming next
+                  Planned
                 </span>
               </div>
             ))}
