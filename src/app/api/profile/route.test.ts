@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { auth } from "@/auth";
 import { db } from "@/lib/server/db";
+import { mockSignIn } from "../testUtils";
 
 vi.mock("@/auth", () => ({
   auth: vi.fn(),
@@ -42,13 +43,21 @@ const validProfile = {
   updatedAt: "2026-07-01T00:00:00.000Z",
 };
 
+const dbProfile = {
+  ...validProfile,
+  userId: "user-1",
+  targetEventDate: null,
+  createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-07-02T00:00:00.000Z"),
+};
+
 describe("profile API route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAuth.mockResolvedValue(null);
   });
 
-  it("rejects unauthenticated profile requests", async () => {
+  it("GET unauthenticated returns 401", async () => {
     const { GET } = await import("./route");
     const response = await GET();
 
@@ -56,15 +65,64 @@ describe("profile API route", () => {
     await expect(response.json()).resolves.toEqual({ error: "Authentication required" });
   });
 
-  it("rejects stale profile updates", async () => {
-    mockAuth.mockResolvedValue({
-      user: {
-        id: "user-1",
-        name: null,
-        email: null,
-        image: null,
-      },
+  it("GET creates/defaults profile when missing via upsert", async () => {
+    mockSignIn(mockAuth);
+    athleteProfile.upsert.mockResolvedValue(dbProfile);
+
+    const { GET } = await import("./route");
+    const response = await GET();
+
+    expect(response.status).toBe(200);
+    expect(athleteProfile.upsert).toHaveBeenCalledWith({
+      where: { userId: "user-1" },
+      create: expect.objectContaining({ userId: "user-1" }),
+      update: {},
     });
+    await expect(response.json()).resolves.toMatchObject({
+      id: validProfile.id,
+      ftp: validProfile.ftp,
+      updatedAt: "2026-07-02T00:00:00.000Z",
+    });
+  });
+
+  it("PATCH rejects missing updatedAt precondition with 400", async () => {
+    mockSignIn(mockAuth);
+
+    const { PATCH } = await import("./route");
+    const response = await PATCH(
+      new Request("http://localhost/api/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ ...validProfile, updatedAt: undefined }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      errors: ["updatedAt precondition is required."],
+    });
+    expect(athleteProfile.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("PATCH rejects invalid updatedAt precondition with 400", async () => {
+    mockSignIn(mockAuth);
+
+    const { PATCH } = await import("./route");
+    const response = await PATCH(
+      new Request("http://localhost/api/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ ...validProfile, updatedAt: "not-a-date" }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      errors: ["updatedAt precondition is required."],
+    });
+    expect(athleteProfile.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("PATCH rejects stale profile update with 409", async () => {
+    mockSignIn(mockAuth);
     athleteProfile.findUnique.mockResolvedValue({
       updatedAt: new Date("2026-07-02T00:00:00.000Z"),
     });
@@ -85,15 +143,35 @@ describe("profile API route", () => {
     expect(athleteProfile.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 
-  it("returns conflict when profile creation races another request", async () => {
-    mockAuth.mockResolvedValue({
-      user: {
-        id: "user-1",
-        name: null,
-        email: null,
-        image: null,
-      },
+  it("PATCH creates profile when no profile exists", async () => {
+    mockSignIn(mockAuth);
+    athleteProfile.findUnique.mockResolvedValue(null);
+    athleteProfile.create.mockResolvedValue(dbProfile);
+
+    const { PATCH } = await import("./route");
+    const response = await PATCH(
+      new Request("http://localhost/api/profile", {
+        method: "PATCH",
+        body: JSON.stringify(validProfile),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(athleteProfile.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: "user-1",
+        ftp: validProfile.ftp,
+      }),
     });
+    await expect(response.json()).resolves.toMatchObject({
+      id: validProfile.id,
+      ftp: validProfile.ftp,
+      updatedAt: "2026-07-02T00:00:00.000Z",
+    });
+  });
+
+  it("PATCH catches create-race P2002 and returns 409", async () => {
+    mockSignIn(mockAuth);
     athleteProfile.findUnique.mockResolvedValue(null);
     athleteProfile.create.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
@@ -115,5 +193,23 @@ describe("profile API route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Profile has changed since this edit started. Refresh and try again.",
     });
+  });
+
+  it("PATCH rejects malformed profile payload with 400", async () => {
+    mockSignIn(mockAuth);
+
+    const { PATCH } = await import("./route");
+    const response = await PATCH(
+      new Request("http://localhost/api/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ ...validProfile, ftp: 0 }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      errors: ["ftp must be at least 1."],
+    });
+    expect(athleteProfile.findUnique).not.toHaveBeenCalled();
   });
 });
