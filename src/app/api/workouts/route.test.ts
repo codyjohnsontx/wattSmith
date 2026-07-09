@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/server/db";
 import { structuredWorkoutToWorkout } from "@/lib/training/workouts";
 import { defaultWorkout } from "@/lib/workout/defaultWorkout";
+import { mockSignIn } from "../testUtils";
 
 vi.mock("@/auth", () => ({
   auth: vi.fn(),
@@ -59,17 +60,6 @@ function dbWorkout(overrides: Partial<StructuredWorkout> = {}): StructuredWorkou
   };
 }
 
-function signIn() {
-  mockAuth.mockResolvedValue({
-    user: {
-      id: "user-1",
-      name: null,
-      email: null,
-      image: null,
-    },
-  });
-}
-
 function postRequest(body: unknown) {
   return new Request("http://localhost/api/workouts", {
     method: "POST",
@@ -92,7 +82,7 @@ describe("workouts collection API route", () => {
   });
 
   it("GET queries only the current user and returns mapped workouts", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     const records = [dbWorkout(), dbWorkout({ id: "workout-2", name: "VO2 Builder" })];
     structuredWorkout.findMany.mockResolvedValue(records);
 
@@ -108,7 +98,7 @@ describe("workouts collection API route", () => {
   });
 
   it("POST rejects malformed workout payload with 400", async () => {
-    signIn();
+    mockSignIn(mockAuth);
 
     const { POST } = await import("./route");
     const response = await POST(postRequest({ ...validWorkout, ftp: 0 }));
@@ -121,7 +111,7 @@ describe("workouts collection API route", () => {
   });
 
   it("POST creates a new owned workout with status 201", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     const created = dbWorkout();
     structuredWorkout.findUnique.mockResolvedValue(null);
     structuredWorkout.create.mockResolvedValue(created);
@@ -141,7 +131,7 @@ describe("workouts collection API route", () => {
   });
 
   it("POST updates an existing workout owned by current user with status 200", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     const existing = dbWorkout();
     const updated = dbWorkout({ name: "Updated Threshold Builder" });
     structuredWorkout.findUnique.mockResolvedValue(existing);
@@ -163,7 +153,7 @@ describe("workouts collection API route", () => {
   });
 
   it("POST returns 409 when the workout ID belongs to another user", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     structuredWorkout.findUnique.mockResolvedValue(dbWorkout({ userId: "user-2" }));
 
     const { POST } = await import("./route");
@@ -176,7 +166,7 @@ describe("workouts collection API route", () => {
   });
 
   it("POST catches Prisma P2002 and returns 409", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     structuredWorkout.findUnique.mockResolvedValue(null);
     structuredWorkout.create.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {

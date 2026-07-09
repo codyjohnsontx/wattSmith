@@ -5,6 +5,7 @@ import { db } from "@/lib/server/db";
 import { defaultWorkout } from "@/lib/workout/defaultWorkout";
 import { defaultProfile } from "@/lib/workout/storage";
 import type { Workout } from "@/lib/workout/types";
+import { mockSignIn } from "../../testUtils";
 
 vi.mock("@/auth", () => ({
   auth: vi.fn(),
@@ -37,17 +38,6 @@ const transaction = db.$transaction as unknown as ReturnType<typeof vi.fn>;
 const athleteProfile = db.athleteProfile as unknown as {
   upsert: ReturnType<typeof vi.fn>;
 };
-
-function signIn() {
-  mockAuth.mockResolvedValue({
-    user: {
-      id: "user-1",
-      name: null,
-      email: null,
-      image: null,
-    },
-  });
-}
 
 function workout(overrides: Partial<Workout> = {}): Workout {
   return {
@@ -90,7 +80,7 @@ describe("local workout migration API route", () => {
   });
 
   it("malformed payload returns 400", async () => {
-    signIn();
+    mockSignIn(mockAuth);
 
     const { POST } = await import("./route");
     const response = await POST(postRequest({ workouts: "not-workouts" }));
@@ -101,7 +91,7 @@ describe("local workout migration API route", () => {
   });
 
   it("more than 100 workouts returns 413 before opening a transaction", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     const workouts = Array.from({ length: 101 }, (_, index) =>
       workout({ id: `workout-${index}`, name: `Workout ${index}` }),
     );
@@ -117,7 +107,7 @@ describe("local workout migration API route", () => {
   });
 
   it("valid payload upserts profile and imports workouts inside $transaction", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     const incomingWorkout = workout();
 
     const { POST } = await import("./route");
@@ -156,7 +146,7 @@ describe("local workout migration API route", () => {
   });
 
   it("existing workout owned by current user is updated", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     const incomingWorkout = workout();
     tx.structuredWorkout.findMany.mockResolvedValue([{ id: incomingWorkout.id, userId: "user-1" }]);
 
@@ -179,7 +169,7 @@ describe("local workout migration API route", () => {
   });
 
   it("existing workout ID owned by another user creates with a generated replacement ID", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     const incomingWorkout = workout();
     tx.structuredWorkout.findMany.mockResolvedValue([{ id: incomingWorkout.id, userId: "user-2" }]);
 
@@ -200,7 +190,7 @@ describe("local workout migration API route", () => {
   });
 
   it("Prisma P2002 from import returns 409", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     transaction.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
         code: "P2002",
@@ -220,7 +210,7 @@ describe("local workout migration API route", () => {
   });
 
   it("if P2002 happens and profile was included, fallback profile upsert is attempted", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     transaction.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
         code: "P2002",

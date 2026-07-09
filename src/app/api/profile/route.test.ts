@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { auth } from "@/auth";
 import { db } from "@/lib/server/db";
+import { mockSignIn } from "../testUtils";
 
 vi.mock("@/auth", () => ({
   auth: vi.fn(),
@@ -50,17 +51,6 @@ const dbProfile = {
   updatedAt: new Date("2026-07-02T00:00:00.000Z"),
 };
 
-function signIn() {
-  mockAuth.mockResolvedValue({
-    user: {
-      id: "user-1",
-      name: null,
-      email: null,
-      image: null,
-    },
-  });
-}
-
 describe("profile API route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,7 +66,7 @@ describe("profile API route", () => {
   });
 
   it("GET creates/defaults profile when missing via upsert", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     athleteProfile.upsert.mockResolvedValue(dbProfile);
 
     const { GET } = await import("./route");
@@ -96,7 +86,7 @@ describe("profile API route", () => {
   });
 
   it("PATCH rejects missing updatedAt precondition with 400", async () => {
-    signIn();
+    mockSignIn(mockAuth);
 
     const { PATCH } = await import("./route");
     const response = await PATCH(
@@ -114,7 +104,7 @@ describe("profile API route", () => {
   });
 
   it("PATCH rejects invalid updatedAt precondition with 400", async () => {
-    signIn();
+    mockSignIn(mockAuth);
 
     const { PATCH } = await import("./route");
     const response = await PATCH(
@@ -132,7 +122,7 @@ describe("profile API route", () => {
   });
 
   it("PATCH rejects stale profile update with 409", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     athleteProfile.findUnique.mockResolvedValue({
       updatedAt: new Date("2026-07-02T00:00:00.000Z"),
     });
@@ -154,7 +144,7 @@ describe("profile API route", () => {
   });
 
   it("PATCH creates profile when no profile exists", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     athleteProfile.findUnique.mockResolvedValue(null);
     athleteProfile.create.mockResolvedValue(dbProfile);
 
@@ -181,7 +171,7 @@ describe("profile API route", () => {
   });
 
   it("PATCH catches create-race P2002 and returns 409", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     athleteProfile.findUnique.mockResolvedValue(null);
     athleteProfile.create.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
@@ -206,7 +196,7 @@ describe("profile API route", () => {
   });
 
   it("PATCH rejects malformed profile payload with 400", async () => {
-    signIn();
+    mockSignIn(mockAuth);
 
     const { PATCH } = await import("./route");
     const response = await PATCH(

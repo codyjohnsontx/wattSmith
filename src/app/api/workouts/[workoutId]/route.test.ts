@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/server/db";
 import { structuredWorkoutToWorkout } from "@/lib/training/workouts";
 import { defaultWorkout } from "@/lib/workout/defaultWorkout";
+import { mockSignIn } from "../../testUtils";
 
 vi.mock("@/auth", () => ({
   auth: vi.fn(),
@@ -46,17 +47,6 @@ function dbWorkout(overrides: Partial<StructuredWorkout> = {}): StructuredWorkou
   };
 }
 
-function signIn() {
-  mockAuth.mockResolvedValue({
-    user: {
-      id: "user-1",
-      name: null,
-      email: null,
-      image: null,
-    },
-  });
-}
-
 function context(workoutId = "workout-1") {
   return {
     params: Promise.resolve({ workoutId }),
@@ -77,7 +67,7 @@ describe("single workout API route", () => {
   });
 
   it("GET returns 404 when findFirst by id and userId finds nothing", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     structuredWorkout.findFirst.mockResolvedValue(null);
 
     const { GET } = await import("./route");
@@ -91,7 +81,7 @@ describe("single workout API route", () => {
   });
 
   it("GET returns the owned workout DTO when found", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     const record = dbWorkout();
     structuredWorkout.findFirst.mockResolvedValue(record);
 
@@ -103,7 +93,7 @@ describe("single workout API route", () => {
   });
 
   it("PATCH returns 404 for missing or not-owned workout", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     structuredWorkout.findFirst.mockResolvedValue(null);
 
     const { PATCH } = await import("./route");
@@ -115,7 +105,7 @@ describe("single workout API route", () => {
   });
 
   it("PATCH merges partial payload over existing workout and updates only owned record", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     const existing = dbWorkout();
     const updated = dbWorkout({
       name: "Updated Threshold Builder",
@@ -145,7 +135,7 @@ describe("single workout API route", () => {
   });
 
   it("PATCH rejects malformed merged workout with 400", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     structuredWorkout.findFirst.mockResolvedValue(dbWorkout());
 
     const { PATCH } = await import("./route");
@@ -159,7 +149,7 @@ describe("single workout API route", () => {
   });
 
   it("DELETE returns 404 for missing or not-owned workout", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     structuredWorkout.findFirst.mockResolvedValue(null);
 
     const { DELETE } = await import("./route");
@@ -171,7 +161,7 @@ describe("single workout API route", () => {
   });
 
   it("DELETE deletes owned workout and returns 204", async () => {
-    signIn();
+    mockSignIn(mockAuth);
     structuredWorkout.findFirst.mockResolvedValue(dbWorkout());
     structuredWorkout.delete.mockResolvedValue(dbWorkout());
 
