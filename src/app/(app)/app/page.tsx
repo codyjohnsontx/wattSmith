@@ -1,19 +1,13 @@
 import { requireUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
-import { dbProfileToAthleteProfile, defaultProfileDbInput } from "@/lib/training/profile";
+import { dbProfileToAthleteProfile } from "@/lib/training/profile";
+import { getOrCreateAthleteProfile } from "@/lib/server/profile";
 import { LocalMigrationPrompt } from "@/components/LocalMigrationPrompt";
 
 export default async function DashboardPage() {
   const user = await requireUser();
   const [profile, workoutCount] = await Promise.all([
-    db.athleteProfile.upsert({
-      where: { userId: user.id },
-      create: {
-        userId: user.id,
-        ...defaultProfileDbInput(),
-      },
-      update: {},
-    }),
+    getOrCreateAthleteProfile(user.id),
     db.structuredWorkout.count({ where: { userId: user.id } }),
   ]);
   const athleteProfile = dbProfileToAthleteProfile(profile);
@@ -31,7 +25,7 @@ export default async function DashboardPage() {
             Training command center
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-            Server-backed athlete profile and workout library are active. Calendar planning starts in phase 2.
+            Analyze completed rides, keep dated FTP context, and turn selected demands into workouts for export.
           </p>
         </section>
 

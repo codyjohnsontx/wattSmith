@@ -1,11 +1,18 @@
+"use client";
+
+import { ApiError } from "@/lib/client/api";
 import { getProfileWarnings } from "@/lib/workout/warnings";
-import type { AthleteProfile, IntegrationConnection, Workout } from "@/lib/workout/types";
+import type { IntegrationConnection } from "@/lib/integrations/types";
+import type { AthleteProfile, Workout } from "@/lib/workout/types";
+import Link from "next/link";
+import { useMemo, useRef, useState } from "react";
 
 interface ProfilePanelProps {
   profile: AthleteProfile;
   workout: Workout;
   integrations: IntegrationConnection[];
-  onChange: (profile: AthleteProfile) => void;
+  onSave: (profile: AthleteProfile) => Promise<AthleteProfile>;
+  onReload: () => Promise<AthleteProfile>;
 }
 
 const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -14,8 +21,46 @@ function inputClassName() {
   return "mt-1 h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300";
 }
 
-export function ProfilePanel({ profile, workout, integrations, onChange }: ProfilePanelProps) {
-  const warnings = getProfileWarnings(profile, workout);
+export function ProfilePanel({ profile, workout, integrations, onSave, onReload }: ProfilePanelProps) {
+  const [draft, setDraft] = useState(profile);
+  const [savedBaseline, setSavedBaseline] = useState(profile);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error" | "conflict">("idle");
+  const [error, setError] = useState("");
+  const savingRef = useRef(false);
+  const isDirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(savedBaseline), [draft, savedBaseline]);
+  const warnings = getProfileWarnings(draft, workout);
+
+  const save = async () => {
+    if (savingRef.current || !isDirty) return;
+    savingRef.current = true;
+    setSaveState("saving");
+    setError("");
+    try {
+      const saved = await onSave(draft);
+      setDraft(saved);
+      setSavedBaseline(saved);
+      setSaveState("saved");
+    } catch (saveError) {
+      setSaveState(saveError instanceof ApiError && saveError.status === 409 ? "conflict" : "error");
+      setError(saveError instanceof Error ? saveError.message : "Could not save profile.");
+    } finally {
+      savingRef.current = false;
+    }
+  };
+
+  const reloadLatest = async () => {
+    setSaveState("saving");
+    setError("");
+    try {
+      const latest = await onReload();
+      setDraft(latest);
+      setSavedBaseline(latest);
+      setSaveState("idle");
+    } catch (reloadError) {
+      setSaveState("error");
+      setError(reloadError instanceof Error ? reloadError.message : "Could not reload profile.");
+    }
+  };
 
   return (
     <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
@@ -34,18 +79,18 @@ export function ProfilePanel({ profile, workout, integrations, onChange }: Profi
             <input
               type="number"
               min={1}
-              value={profile.ftp}
-              onChange={(event) => onChange({ ...profile, ftp: Number(event.target.value) })}
+              value={draft.ftp}
+              onChange={(event) => setDraft({ ...draft, ftp: Number(event.target.value) })}
               className={inputClassName()}
             />
           </label>
           <label>
             <span className="text-xs font-medium text-slate-400">Experience</span>
             <select
-              value={profile.experienceLevel}
+              value={draft.experienceLevel}
               onChange={(event) =>
-                onChange({
-                  ...profile,
+                setDraft({
+                  ...draft,
                   experienceLevel: event.target.value as AthleteProfile["experienceLevel"],
                 })
               }
@@ -63,8 +108,8 @@ export function ProfilePanel({ profile, workout, integrations, onChange }: Profi
             <input
               type="number"
               min={0}
-              value={profile.weeklyHours}
-              onChange={(event) => onChange({ ...profile, weeklyHours: Number(event.target.value) })}
+              value={draft.weeklyHours}
+              onChange={(event) => setDraft({ ...draft, weeklyHours: Number(event.target.value) })}
               className={inputClassName()}
             />
           </label>
@@ -73,10 +118,10 @@ export function ProfilePanel({ profile, workout, integrations, onChange }: Profi
             <input
               type="number"
               min={15}
-              value={profile.preferredWorkoutDurationMinutes}
+              value={draft.preferredWorkoutDurationMinutes}
               onChange={(event) =>
-                onChange({
-                  ...profile,
+                setDraft({
+                  ...draft,
                   preferredWorkoutDurationMinutes: Number(event.target.value),
                 })
               }
@@ -86,18 +131,18 @@ export function ProfilePanel({ profile, workout, integrations, onChange }: Profi
           <label className="md:col-span-2">
             <span className="text-xs font-medium text-slate-400">Primary goal</span>
             <input
-              value={profile.primaryGoal}
-              onChange={(event) => onChange({ ...profile, primaryGoal: event.target.value })}
+              value={draft.primaryGoal}
+              onChange={(event) => setDraft({ ...draft, primaryGoal: event.target.value })}
               className={inputClassName()}
             />
           </label>
           <label className="md:col-span-2">
             <span className="text-xs font-medium text-slate-400">Constraints</span>
             <input
-              value={profile.constraints.join(", ")}
+              value={draft.constraints.join(", ")}
               onChange={(event) =>
-                onChange({
-                  ...profile,
+                setDraft({
+                  ...draft,
                   constraints: event.target.value
                     .split(",")
                     .map((item) => item.trim())
@@ -114,17 +159,17 @@ export function ProfilePanel({ profile, workout, integrations, onChange }: Profi
           <span className="text-xs font-medium text-slate-400">Available days</span>
           <div className="mt-2 flex flex-wrap gap-2">
             {weekdays.map((day) => {
-              const active = profile.availableDays.includes(day);
+              const active = draft.availableDays.includes(day);
               return (
                 <button
                   key={day}
                   type="button"
                   onClick={() =>
-                    onChange({
-                      ...profile,
+                    setDraft({
+                      ...draft,
                       availableDays: active
-                        ? profile.availableDays.filter((item) => item !== day)
-                        : [...profile.availableDays, day],
+                        ? draft.availableDays.filter((item) => item !== day)
+                        : [...draft.availableDays, day],
                     })
                   }
                   className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
@@ -139,6 +184,29 @@ export function ProfilePanel({ profile, workout, integrations, onChange }: Profi
             })}
           </div>
         </div>
+        <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-800 pt-4">
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={!isDirty || saveState === "saving"}
+            className="rounded-lg bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saveState === "saving" ? "Saving…" : "Save profile"}
+          </button>
+          <span className="text-sm text-slate-400" aria-live="polite">
+            {saveState === "saved" && !isDirty ? "Saved" : isDirty ? "Unsaved changes" : "Up to date"}
+          </span>
+        </div>
+        {error ? (
+          <div className="mt-4 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-100" role="alert">
+            <p>{error}</p>
+            {saveState === "conflict" ? (
+              <button type="button" onClick={() => void reloadLatest()} className="mt-3 font-semibold text-cyan-200 underline underline-offset-4">
+                Reload latest profile
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-5">
@@ -169,7 +237,7 @@ export function ProfilePanel({ profile, workout, integrations, onChange }: Profi
             Integrations
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Strava is planned for phase 3. No live sync is active yet.
+            Strava is a separate, revocable activity-data connection. Cached activity data expires within seven days.
           </p>
           <div className="mt-4 space-y-2">
             {integrations.map((connection) => (
@@ -184,6 +252,9 @@ export function ProfilePanel({ profile, workout, integrations, onChange }: Profi
               </div>
             ))}
           </div>
+          <Link href="/activities" className="mt-4 inline-block text-sm font-semibold text-cyan-200 underline underline-offset-4">
+            Manage Strava connection
+          </Link>
         </section>
       </div>
     </section>

@@ -109,24 +109,6 @@ export interface AthleteProfile {
   updatedAt: string;
 }
 
-export interface ExternalActivity {
-  id: string;
-  provider: "strava" | "garmin" | "trainingpeaks";
-  startedAt: string;
-  durationSeconds: number;
-  averagePower?: number;
-  normalizedPower?: number;
-  intensityFactor?: number;
-  trainingStressScore?: number;
-  perceivedExertion?: number;
-}
-
-export interface IntegrationConnection {
-  provider: "strava" | "garmin" | "trainingpeaks";
-  status: "not_connected" | "connected" | "expired";
-  connectedAt?: string;
-}
-
 export interface FlattenedSegment {
   id: string;
   parentStepId: string;

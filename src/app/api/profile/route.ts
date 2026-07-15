@@ -1,9 +1,9 @@
 import { Prisma, type AthleteProfile as DbAthleteProfile } from "@prisma/client";
 import { authenticationErrorResponse, requireUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
+import { getOrCreateAthleteProfile, syncCurrentProfileFtp } from "@/lib/server/profile";
 import {
   dbProfileToAthleteProfile,
-  defaultProfileDbInput,
   profileToDbInput,
   validateProfilePayload,
 } from "@/lib/training/profile";
@@ -25,15 +25,7 @@ function profilePreconditionDate(payload: unknown) {
 export async function GET() {
   try {
     const user = await requireUser();
-    const profile = await db.athleteProfile.upsert({
-      where: { userId: user.id },
-      create: {
-        userId: user.id,
-        ...defaultProfileDbInput(),
-      },
-      update: {},
-    });
-
+    const profile = await getOrCreateAthleteProfile(user.id);
     return Response.json(dbProfileToAthleteProfile(profile));
   } catch (error) {
     const response = authenticationErrorResponse(error);
@@ -60,7 +52,7 @@ export async function PATCH(request: Request) {
 
     const existingProfile = await db.athleteProfile.findUnique({
       where: { userId: user.id },
-      select: { updatedAt: true },
+      select: { updatedAt: true, ftp: true },
     });
 
     let profile: DbAthleteProfile;
@@ -103,6 +95,10 @@ export async function PATCH(request: Request) {
       }
     }
 
+    if (!existingProfile || existingProfile.ftp !== result.profile.ftp) {
+      await syncCurrentProfileFtp(user.id, result.profile.ftp);
+      profile = await db.athleteProfile.findUniqueOrThrow({ where: { userId: user.id } });
+    }
     return Response.json(dbProfileToAthleteProfile(profile));
   } catch (error) {
     const response = authenticationErrorResponse(error);

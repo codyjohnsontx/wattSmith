@@ -17,7 +17,7 @@ import {
 import { formatDuration, formatRelativeTime } from "@/lib/workout/math";
 import { cloneTemplateWorkout, workoutCategories, workoutTemplates } from "@/lib/workout/templates";
 import type { AthleteProfile, Workout, WorkoutCategory, WorkoutTemplate } from "@/lib/workout/types";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { TemplatePreviewModal } from "./TemplatePreviewModal";
 
 interface WorkoutLibraryProps {
@@ -26,6 +26,7 @@ interface WorkoutLibraryProps {
   profile: AthleteProfile;
   onLoad: (workout: Workout) => void;
   onSaveWorkout: (workout: Workout) => void;
+  onRenameWorkout: (id: string, name: string) => Promise<Workout>;
   onDeleteWorkout: (id: string) => void;
   onToggleFavorite: (id: string) => void;
   onCreateNew?: () => void;
@@ -35,7 +36,7 @@ function categoryLabel(category?: WorkoutCategory) {
   return category ? category.replace("-", " ") : "uncategorized";
 }
 
-function WorkoutRow({
+export function WorkoutRow({
   entry,
   onLoad,
   onDuplicate,
@@ -47,11 +48,35 @@ function WorkoutRow({
   onLoad: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onRename: (name: string) => void;
+  onRename: (name: string) => Promise<Workout>;
   onToggleFavorite: () => void;
 }) {
   const { workout, summary, difficulty } = entry;
   const isFavorite = workout.favorite === true;
+  const [draftName, setDraftName] = useState(workout.name);
+  const [renameError, setRenameError] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const skipNextBlurRef = useRef(false);
+
+  const commitRename = async () => {
+    const nextName = draftName.trim();
+    if (savingName || nextName === workout.name || nextName.length === 0) {
+      if (nextName.length === 0) setDraftName(workout.name);
+      return;
+    }
+
+    setSavingName(true);
+    setRenameError("");
+    try {
+      const saved = await onRename(nextName);
+      setDraftName(saved.name);
+    } catch (error) {
+      setDraftName(workout.name);
+      setRenameError(error instanceof Error ? error.message : "Could not rename workout.");
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   return (
     <article className="grid gap-3 rounded-lg border border-slate-800 bg-slate-950/70 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
@@ -69,8 +94,31 @@ function WorkoutRow({
             {isFavorite ? "★" : "☆"}
           </button>
           <input
-            value={workout.name}
-            onChange={(event) => onRename(event.target.value)}
+            value={draftName}
+            onChange={(event) => setDraftName(event.target.value)}
+            onBlur={() => {
+              if (skipNextBlurRef.current) {
+                skipNextBlurRef.current = false;
+                return;
+              }
+              void commitRename();
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                skipNextBlurRef.current = true;
+                void commitRename();
+                event.currentTarget.blur();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                skipNextBlurRef.current = true;
+                setDraftName(workout.name);
+                setRenameError("");
+                event.currentTarget.blur();
+              }
+            }}
+            disabled={savingName}
             className="min-w-0 flex-1 bg-transparent text-base font-semibold text-slate-50 outline-none"
             aria-label="Rename saved workout"
           />
@@ -87,6 +135,7 @@ function WorkoutRow({
           {summary.highestWatts}W · {summary.dominantZone.label} · Edited{" "}
           {formatRelativeTime(workout.updatedAt)}
         </p>
+        {renameError ? <p className="mt-2 text-xs text-red-300" role="alert">{renameError}</p> : null}
       </div>
       <div className="flex flex-wrap gap-2">
         <button
@@ -121,6 +170,7 @@ export function WorkoutLibrary({
   profile,
   onLoad,
   onSaveWorkout,
+  onRenameWorkout,
   onDeleteWorkout,
   onToggleFavorite,
   onCreateNew,
@@ -285,7 +335,7 @@ export function WorkoutLibrary({
                 onLoad={() => onLoad(structuredClone(entry.workout))}
                 onDuplicate={() => onSaveWorkout(duplicateWorkout(entry.workout))}
                 onDelete={() => onDeleteWorkout(entry.workout.id)}
-                onRename={(name) => onSaveWorkout({ ...entry.workout, name })}
+                onRename={(name) => onRenameWorkout(entry.workout.id, name)}
                 onToggleFavorite={() => onToggleFavorite(entry.workout.id)}
               />
             ))

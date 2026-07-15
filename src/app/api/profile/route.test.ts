@@ -10,11 +10,17 @@ vi.mock("@/auth", () => ({
 
 vi.mock("@/lib/server/db", () => ({
   db: {
+    $transaction: vi.fn(),
     athleteProfile: {
       create: vi.fn(),
       findUnique: vi.fn(),
       findUniqueOrThrow: vi.fn(),
       updateMany: vi.fn(),
+      upsert: vi.fn(),
+      update: vi.fn(),
+    },
+    athleteFtpHistory: {
+      findFirst: vi.fn(),
       upsert: vi.fn(),
     },
   },
@@ -28,6 +34,10 @@ const athleteProfile = db.athleteProfile as unknown as {
   findUnique: ReturnType<typeof vi.fn>;
   findUniqueOrThrow: ReturnType<typeof vi.fn>;
   updateMany: ReturnType<typeof vi.fn>;
+  upsert: ReturnType<typeof vi.fn>;
+};
+const athleteFtpHistory = db.athleteFtpHistory as unknown as {
+  findFirst: ReturnType<typeof vi.fn>;
   upsert: ReturnType<typeof vi.fn>;
 };
 
@@ -55,6 +65,12 @@ describe("profile API route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAuth.mockResolvedValue(null);
+    (db.$transaction as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (callback: (client: typeof db) => unknown) => callback(db),
+    );
+    athleteFtpHistory.findFirst.mockResolvedValue({ ftp: validProfile.ftp });
+    athleteFtpHistory.upsert.mockResolvedValue({});
+    athleteProfile.findUniqueOrThrow.mockResolvedValue(dbProfile);
   });
 
   it("GET unauthenticated returns 401", async () => {
