@@ -2,6 +2,9 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getDemoActivityDetail } from "@/lib/activity/demoFixture";
+import { createPeakDemandPrescription } from "@/lib/activity/prescription";
+import { saveActivityPrescriptionDraft } from "@/lib/activity/prescriptionStorage";
 import { apiRequest } from "@/lib/client/api";
 import { cloneDefaultWorkout } from "@/lib/workout/defaultWorkout";
 import { defaultProfile } from "@/lib/workout/storage";
@@ -45,6 +48,7 @@ const serverWorkout = { ...cloneDefaultWorkout(), id: "saved-1", name: "Server w
 describe("WorkoutWorkspace save reliability", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     (apiRequest as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
       if (url === "/api/profile") return Promise.resolve(defaultProfile);
       if (url === "/api/workouts") return Promise.resolve([serverWorkout]);
@@ -53,6 +57,27 @@ describe("WorkoutWorkspace save reliability", () => {
   });
 
   afterEach(() => vi.restoreAllMocks());
+
+  it("consumes a selected activity demand as an unsaved builder draft", async () => {
+    const detail = getDemoActivityDetail();
+    const effort = detail.analysis.peakEfforts.find((item) => item.durationSeconds === 300);
+    expect(effort).toBeDefined();
+    const draft = createPeakDemandPrescription({
+      effort: effort!,
+      ftp: detail.analysis.ftp,
+      sourcePath: `/demo/activities/${detail.activity.id}`,
+      sourceType: "synthetic-demo",
+    });
+    expect(draft).not.toBeNull();
+    saveActivityPrescriptionDraft(draft!);
+
+    render(<WorkoutWorkspace initialTab="library" />);
+
+    expect(await screen.findByText("Current: 5 min demand rehearsal")).toBeInTheDocument();
+    expect(screen.getByText("Draft from selected demand")).toBeInTheDocument();
+    expect(screen.getByText("Unsaved")).toBeInTheDocument();
+    expect(window.sessionStorage.getItem("wattsmith.activity-prescription-draft.v1")).toBeNull();
+  });
 
   it("preserves edits made after a workout save was submitted", async () => {
     const user = userEvent.setup();

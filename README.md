@@ -13,9 +13,10 @@ Wattsmith is a cycling analysis-to-prescription workspace. It helps a rider unde
 - Dated FTP history so activity calculations use the FTP effective on the ride date.
 - A separate, revocable Strava data connection with encrypted tokens, rotating refresh-token persistence, lazy activity pagination, and caches capped at seven days.
 - Deep race/hard-ride analysis: power coverage, weighted power, IF, estimated TSS, Wattsmith zones, peak efforts, variability, durability comparisons, and data-quality notes.
+- Rider-selected peak-demand mapping that explains the observed effort, editable workout target, repeat structure, and recovery before creating an unsaved builder draft.
 - A public synthetic-data demo at [`/demo`](http://localhost:3000/demo) that uses the same analysis engine and UI without credentials or athlete data.
 
-Strava activity analysis requires a configured Strava application. FIT/TCX import, analysis-to-workout handoff, coaching relationships, plans, calendar views, and longitudinal analytics remain roadmap work.
+Strava activity analysis requires a configured Strava application. Additional finding-to-workout mappings, FIT/TCX import, coaching relationships, plans, calendar views, and longitudinal analytics remain roadmap work.
 
 ## Development
 
