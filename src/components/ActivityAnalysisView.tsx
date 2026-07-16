@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { createPeakDemandPrescription, mapPeakDemand } from "@/lib/activity/prescription";
+import { saveActivityPrescriptionDraft } from "@/lib/activity/prescriptionStorage";
 import type { ActivityDetail, ComparisonMetric } from "@/lib/activity/types";
 
 function duration(seconds: number) {
@@ -20,8 +23,12 @@ function comparisonText(value: ComparisonMetric, suffix: string) {
 }
 
 export function ActivityAnalysisView({ detail, demo = false }: { detail: ActivityDetail; demo?: boolean }) {
+  const router = useRouter();
   const [series, setSeries] = useState({ power: true, heartRate: true, cadence: true });
+  const [selectedPeakDuration, setSelectedPeakDuration] = useState<number | null>(null);
   const { activity, analysis } = detail;
+  const selectedEffort = analysis.peakEfforts.find((effort) => effort.durationSeconds === selectedPeakDuration) ?? null;
+  const selectedMapping = selectedEffort ? mapPeakDemand(selectedEffort, analysis.ftp) : null;
   const paths = useMemo(() => {
     const width = 1200;
     const height = 320;
@@ -56,6 +63,22 @@ export function ActivityAnalysisView({ detail, demo = false }: { detail: Activit
     ["Variability", metric(analysis.summary.variabilityIndex, "", 2)],
     ["Work", metric(analysis.summary.workKilojoules, "kJ")],
   ];
+
+  const createWorkoutDraft = () => {
+    if (!selectedEffort) return;
+    const sourcePath = demo
+      ? `/demo/activities/${encodeURIComponent(activity.id)}`
+      : `/activities/${encodeURIComponent(activity.id)}`;
+    const draft = createPeakDemandPrescription({
+      effort: selectedEffort,
+      ftp: analysis.ftp,
+      sourcePath,
+      sourceType: detail.source,
+    });
+    if (!draft) return;
+    saveActivityPrescriptionDraft(draft);
+    router.push("/workouts");
+  };
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -104,7 +127,74 @@ export function ActivityAnalysisView({ detail, demo = false }: { detail: Activit
 
         <div className="grid gap-10 border-b border-slate-800 py-8 xl:grid-cols-[1fr_1fr]">
           <section aria-labelledby="zones-heading"><h2 id="zones-heading" className="text-2xl font-semibold text-white">Power zones</h2><p className="mt-2 text-sm text-slate-400">Time allocated using {analysis.ftp}W FTP, effective {analysis.ftpEffectiveFrom}.</p><div className="mt-6 space-y-4">{analysis.powerZones.map((zone) => <div key={zone.id} className="grid grid-cols-[110px_1fr_76px] items-center gap-3 text-sm"><span className="text-slate-300">{zone.label}</span><div className="h-2 bg-slate-800"><div className="h-full" style={{ width: `${zone.percent}%`, background: zone.color }} /></div><span className="text-right tabular-nums text-slate-400">{duration(zone.seconds)}</span></div>)}</div></section>
-          <section aria-labelledby="peaks-heading"><h2 id="peaks-heading" className="text-2xl font-semibold text-white">Peak efforts</h2><p className="mt-2 text-sm text-slate-400">Best rolling averages with the 80% sample-validity rule applied.</p><table className="mt-5 w-full text-left text-sm"><thead className="border-b border-slate-700 text-xs uppercase tracking-[0.14em] text-slate-500"><tr><th className="py-3">Window</th><th className="py-3 text-right">Power</th><th className="py-3 text-right">Starts at</th></tr></thead><tbody>{analysis.peakEfforts.map((effort) => <tr key={effort.durationSeconds} className="border-b border-slate-800"><td className="py-4 text-slate-200">{effort.label}</td><td className="py-4 text-right font-semibold text-white">{metric(effort.watts, "W")}</td><td className="py-4 text-right text-slate-400">{effort.startMovingSecond === null ? "—" : duration(effort.startMovingSecond)}</td></tr>)}</tbody></table></section>
+          <section aria-labelledby="peaks-heading">
+            <h2 id="peaks-heading" className="text-2xl font-semibold text-white">Peak efforts</h2>
+            <p className="mt-2 text-sm text-slate-400">Best rolling averages with the 80% sample-validity rule applied. Choose the demand you want to rehearse.</p>
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full min-w-[520px] text-left text-sm">
+                <thead className="border-b border-slate-700 text-xs uppercase tracking-[0.14em] text-slate-500">
+                  <tr>
+                    <th className="py-3">Window</th>
+                    <th className="py-3 text-right">Power</th>
+                    <th className="py-3 text-right">Starts at</th>
+                    <th className="py-3 text-right"><span className="sr-only">Select demand</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analysis.peakEfforts.map((effort) => {
+                    const selected = effort.durationSeconds === selectedPeakDuration;
+                    return (
+                      <tr key={effort.durationSeconds} className={`border-b ${selected ? "border-cyan-300/60 bg-cyan-300/[0.06]" : "border-slate-800"}`}>
+                        <td className="py-4 pl-2 text-slate-200">{effort.label}</td>
+                        <td className="py-4 text-right font-semibold text-white">{metric(effort.watts, "W")}</td>
+                        <td className="py-4 text-right text-slate-400">{effort.startMovingSecond === null ? "—" : duration(effort.startMovingSecond)}</td>
+                        <td className="py-3 pl-4 text-right">
+                          <button
+                            type="button"
+                            disabled={effort.watts === null}
+                            aria-pressed={selected}
+                            onClick={() => setSelectedPeakDuration(effort.durationSeconds)}
+                            className={`border px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${selected ? "border-cyan-300 bg-cyan-300 text-slate-950" : "border-slate-700 text-slate-200 hover:border-cyan-300"}`}
+                          >
+                            {selected ? "Selected" : "Select"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {selectedMapping ? (
+              <div className="mt-7 border-l-2 border-cyan-300 bg-slate-900/50 px-5 py-5" aria-live="polite">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">Workout mapping</p>
+                <h3 className="mt-2 text-xl font-semibold text-white">Rehearse the {selectedMapping.findingLabel}</h3>
+                <dl className="mt-5 grid gap-5 sm:grid-cols-3">
+                  <div>
+                    <dt className="text-xs uppercase tracking-[0.14em] text-slate-500">Observed</dt>
+                    <dd className="mt-1 font-semibold text-white">{selectedMapping.observedWatts}W · {selectedMapping.observedPercentFtp}% FTP</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-[0.14em] text-slate-500">Workout target</dt>
+                    <dd className="mt-1 font-semibold text-white">{selectedMapping.targetWatts}W · {selectedMapping.targetPercentFtp}% FTP</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-[0.14em] text-slate-500">Structure</dt>
+                    <dd className="mt-1 font-semibold text-white">
+                      {selectedMapping.repeatCount} × {duration(selectedMapping.workIntervalSeconds)}
+                      {selectedMapping.recoverySeconds === null ? "" : ` · ${duration(selectedMapping.recoverySeconds)} recovery`}
+                    </dd>
+                  </div>
+                </dl>
+                <p className="mt-5 max-w-2xl text-sm leading-6 text-slate-400">The workout target is 95% of the observed peak, rounded to an editable FTP percentage. This is a demand rehearsal, not an automatic diagnosis.</p>
+                <button type="button" onClick={createWorkoutDraft} className="mt-5 inline-flex bg-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200">
+                  Create unsaved workout
+                </button>
+                {demo ? <p className="mt-3 text-xs text-slate-500">You can inspect the mapping without an account. Sign-in is required to open and save the builder draft.</p> : null}
+              </div>
+            ) : null}
+          </section>
         </div>
 
         <div className="grid gap-10 py-8 xl:grid-cols-[1fr_1fr]">

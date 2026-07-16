@@ -51,12 +51,13 @@ Success gate: normal editing cannot race profile or rename requests; unsaved wor
 
 Success gate: every activity uses its historical FTP; only its connected athlete can request it; list and detail caches never exceed seven days; missing/estimated data is explained; `/demo` works without authentication.
 
-## Phase 3: Analysis to Prescription
+## Phase 3: Analysis to Prescription — In Progress
 
-- Let the rider select the activity finding to address.
-- Convert the selected demand profile into explicit builder inputs rather than an opaque prescription.
-- Create a new unsaved workout linked to source-analysis identity without copying prohibited Strava data into shared records.
-- Export through the existing `.mrc` and `.erg` verification workflow.
+- Implemented: select an available 5-second, 30-second, 1-minute, 5-minute, or 20-minute peak demand from an activity.
+- Implemented: show the observed peak, deterministic 95% target, repeat count, and recovery before creating anything.
+- Implemented: create a new unsaved, fully editable builder workout while keeping the source-analysis path session-only and outside saved workout records.
+- Next: extend explicit mappings to other findings, including zone demands and durability comparisons.
+- Export generated drafts through the existing `.mrc` and `.erg` verification workflow.
 
 Success gate: the rider can explain which finding shaped the workout and edit every generated input before saving or exporting.
 

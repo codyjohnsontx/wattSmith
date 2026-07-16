@@ -1,7 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { ExportPanel } from "@/components/ExportPanel";
 import { apiRequest } from "@/lib/client/api";
+import type { ActivityPrescriptionOrigin } from "@/lib/activity/prescription";
+import { consumeActivityPrescriptionDraft } from "@/lib/activity/prescriptionStorage";
 import type { IntegrationConnection } from "@/lib/integrations/types";
 import { ProfilePanel } from "@/components/ProfilePanel";
 import { WorkoutChart } from "@/components/WorkoutChart";
@@ -79,6 +82,12 @@ function isTextEditingTarget(target: EventTarget | null): boolean {
   return tagName === "input" || tagName === "textarea" || tagName === "select";
 }
 
+function formatPrescriptionDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
 function createBlankWorkout(ftp: number): Workout {
   const timestamp = new Date().toISOString();
   return {
@@ -132,6 +141,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() =>
     workoutFingerprint(cloneDefaultWorkout()),
   );
+  const [prescriptionOrigin, setPrescriptionOrigin] = useState<ActivityPrescriptionOrigin | null>(null);
   const statusTimeoutRef = useRef<number | undefined>(undefined);
   const editorPristineRef = useRef(true);
   const activeWorkoutRef = useRef(workoutHistory.present);
@@ -262,6 +272,16 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
     }
 
     const timeoutId = window.setTimeout(() => {
+      const prescriptionDraft = consumeActivityPrescriptionDraft();
+      if (prescriptionDraft) {
+        editorPristineRef.current = false;
+        replaceActiveWorkout(prescriptionDraft.workout);
+        setPrescriptionOrigin(prescriptionDraft.origin);
+        setLastSavedSnapshot("");
+        setSaveState("unsaved");
+        setActiveTab("builder");
+        setStatus("Workout draft created from selected demand");
+      }
       setCustomReusableBlocks(loadReusableBlocks());
       setIntegrations(loadIntegrationConnections());
       void loadServerState();
@@ -483,6 +503,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
     editorPristineRef.current = false;
     const nextWorkout = createBlankWorkout(profile.ftp);
     replaceActiveWorkout(nextWorkout);
+    setPrescriptionOrigin(null);
     setLastSavedSnapshot("");
     setSaveState("unsaved");
     setActiveTab("builder");
@@ -499,6 +520,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
       if (workout.id === id) {
         const nextWorkout = nextSavedWorkouts[0] ?? createBlankWorkout(profile.ftp);
         replaceActiveWorkout(nextWorkout);
+        setPrescriptionOrigin(null);
         setLastSavedSnapshot(nextSavedWorkouts[0] ? workoutFingerprint(nextWorkout) : "");
         setSaveState(nextSavedWorkouts[0] ? "saved" : "unsaved");
       }
@@ -650,6 +672,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
                   editorPristineRef.current = false;
                   const starter = { ...cloneDefaultWorkout(), ftp: profile.ftp };
                   replaceActiveWorkout(starter);
+                  setPrescriptionOrigin(null);
                   setLastSavedSnapshot("");
                   setSaveState("unsaved");
                   flashStatus("Reset to starter");
@@ -664,6 +687,24 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
 
         {activeTab === "builder" ? (
           <div className="space-y-6">
+            {prescriptionOrigin ? (
+              <section className="border-l-2 border-cyan-300 bg-slate-900/60 px-5 py-4" aria-label="Workout draft origin">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">Draft from selected demand</p>
+                    <p className="mt-2 text-sm text-slate-200">
+                      <span className="font-semibold text-white">{prescriptionOrigin.findingLabel}</span>
+                      {` · ${prescriptionOrigin.observedWatts}W observed → ${prescriptionOrigin.targetWatts}W target · ${prescriptionOrigin.repeatCount} × ${formatPrescriptionDuration(prescriptionOrigin.workIntervalSeconds)}`}
+                      {prescriptionOrigin.recoverySeconds === null ? "" : ` with ${formatPrescriptionDuration(prescriptionOrigin.recoverySeconds)} recovery`}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">The source reference stays in this browser session and is not included when the workout is saved.</p>
+                  </div>
+                  <Link href={prescriptionOrigin.sourcePath} onNavigate={guardLinkNavigation} className="shrink-0 text-sm font-semibold text-cyan-200 underline decoration-cyan-300/40 underline-offset-4">
+                    Back to analysis
+                  </Link>
+                </div>
+              </section>
+            ) : null}
             <WorkoutChart
               workout={workout}
               selectedStepId={selectedStepId}
@@ -699,6 +740,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
               if (!confirmDiscard()) return;
               editorPristineRef.current = false;
               replaceActiveWorkout(nextWorkout);
+              setPrescriptionOrigin(null);
               const saved = savedWorkouts.some((item) => item.id === nextWorkout.id);
               setLastSavedSnapshot(saved ? workoutFingerprint(nextWorkout) : "");
               setSaveState(saved ? "saved" : "unsaved");
