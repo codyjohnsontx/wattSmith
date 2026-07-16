@@ -12,7 +12,14 @@ export async function PATCH(request: Request, context: Context) {
     const user = await requireUser();
     const { entryId } = await context.params;
     const payload = await request.json().catch(() => undefined) as { ftp?: unknown; effectiveFrom?: unknown } | undefined;
-    if (!payload) return Response.json({ error: "A JSON body is required." }, { status: 400 });
+    if (
+      typeof payload !== "object"
+      || payload === null
+      || Array.isArray(payload)
+      || (!("ftp" in payload) && !("effectiveFrom" in payload))
+    ) {
+      return Response.json({ error: "A JSON body is required." }, { status: 400 });
+    }
     const entry = await updateFtpHistoryEntry(user.id, entryId, payload);
     return Response.json(ftpHistoryToDto(entry));
   } catch (error) {

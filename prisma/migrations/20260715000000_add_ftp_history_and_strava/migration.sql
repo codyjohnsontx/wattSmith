@@ -43,7 +43,6 @@ CREATE TABLE "StravaCacheEntry" (
 );
 
 CREATE UNIQUE INDEX "AthleteFtpHistory_userId_effectiveFrom_key" ON "AthleteFtpHistory"("userId", "effectiveFrom");
-CREATE INDEX "AthleteFtpHistory_userId_effectiveFrom_idx" ON "AthleteFtpHistory"("userId", "effectiveFrom");
 CREATE UNIQUE INDEX "StravaConnection_userId_key" ON "StravaConnection"("userId");
 CREATE INDEX "StravaConnection_athleteId_idx" ON "StravaConnection"("athleteId");
 CREATE UNIQUE INDEX "StravaCacheEntry_userId_resourceKey_key" ON "StravaCacheEntry"("userId", "resourceKey");

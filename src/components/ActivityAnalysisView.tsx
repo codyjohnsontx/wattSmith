@@ -26,16 +26,27 @@ export function ActivityAnalysisView({ detail, demo = false }: { detail: Activit
     const width = 1200;
     const height = 320;
     const maximumSecond = Math.max(1, analysis.chart.at(-1)?.second ?? 1);
+    const maximumFor = (key: "power" | "heartRate" | "cadence") => {
+      const values = analysis.chart.map((point) => point[key]).filter((value): value is number => value !== null);
+      return Math.max(1, ...(values.map((value) => value * 1.08)));
+    };
     const build = (key: "power" | "heartRate" | "cadence", maximum: number) => {
       let started = false;
+      let previousSegment: number | undefined;
       return analysis.chart.map((point) => {
         if (point[key] === null) { started = false; return null; }
+        if (previousSegment !== undefined && previousSegment !== point.segment) started = false;
         const command = started ? "L" : "M";
         started = true;
+        previousSegment = point.segment;
         return `${command}${(point.second / maximumSecond) * width},${height - ((point[key] ?? 0) / maximum) * (height - 24)}`;
       }).filter(Boolean).join(" ");
     };
-    return { power: build("power", 600), heartRate: build("heartRate", 210), cadence: build("cadence", 130) };
+    return {
+      power: build("power", maximumFor("power")),
+      heartRate: build("heartRate", maximumFor("heartRate")),
+      cadence: build("cadence", maximumFor("cadence")),
+    };
   }, [analysis.chart]);
   const summary = [
     ["Average power", metric(analysis.summary.averagePower, "W")],
@@ -57,7 +68,7 @@ export function ActivityAnalysisView({ detail, demo = false }: { detail: Activit
             </div>
             <Link href={demo ? "/demo" : "/activities"} className="text-sm font-semibold text-slate-300 underline decoration-slate-600 underline-offset-4">Back to activities</Link>
           </div>
-          <p className="mt-8 text-sm text-slate-400">{new Date(activity.startedAt).toLocaleString()} · {activity.sportType} · {detail.source === "strava" ? "Source: Strava" : "Source: synthetic Wattsmith fixture"}</p>
+          <p className="mt-8 text-sm text-slate-400">{new Date(activity.startedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" })} · {activity.sportType} · {detail.source === "strava" ? "Source: Strava" : "Source: synthetic Wattsmith fixture"}</p>
           <h1 className="mt-2 max-w-5xl text-4xl font-semibold tracking-tight text-white sm:text-6xl">{activity.name}</h1>
           <div className="mt-5 flex flex-wrap gap-x-7 gap-y-2 text-sm text-slate-300">
             <span>{duration(activity.movingTimeSeconds)} moving</span>

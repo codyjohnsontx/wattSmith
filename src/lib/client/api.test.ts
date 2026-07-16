@@ -16,4 +16,21 @@ describe("typed API client", () => {
     await expect(apiRequest("/api/test")).rejects.toBeInstanceOf(ApiError);
     expect(assign).toHaveBeenCalledWith("/sign-in?callbackUrl=%2Factivities%3Fpage%3D2");
   });
+
+  it("preserves every Headers form and does not replace explicit content types", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiRequest("/api/test", {
+      method: "POST",
+      body: "payload",
+      headers: new Headers([["X-Test", "kept"], ["Content-Type", "text/plain"]]),
+    });
+
+    const headers = fetchMock.mock.calls[0][1].headers as Headers;
+    expect(headers.get("X-Test")).toBe("kept");
+    expect(headers.get("Content-Type")).toBe("text/plain");
+  });
 });

@@ -1,9 +1,10 @@
-import type { AthleteFtpHistory, AthleteProfile, Prisma } from "@prisma/client";
+import { Prisma, type AthleteFtpHistory, type AthleteProfile } from "@prisma/client";
 import { db } from "@/lib/server/db";
 import { defaultProfileDbInput } from "@/lib/training/profile";
 
 export const FTP_MIN = 1;
 export const FTP_MAX = 2000;
+const SERIALIZABLE_RETRY_LIMIT = 3;
 
 export class FtpHistoryError extends Error {
   constructor(message: string, readonly status: number) {
@@ -33,11 +34,20 @@ export function parseDateOnly(value: unknown): Date {
 }
 
 export function parseFtp(value: unknown): number {
+  if (typeof value === "boolean") {
+    throw new FtpHistoryError(`ftp must be an integer from ${FTP_MIN} to ${FTP_MAX}.`, 400);
+  }
   const ftp = Number(value);
   if (!Number.isInteger(ftp) || ftp < FTP_MIN || ftp > FTP_MAX) {
     throw new FtpHistoryError(`ftp must be an integer from ${FTP_MIN} to ${FTP_MAX}.`, 400);
   }
   return ftp;
+}
+
+function utcDateOnly(value = new Date()) {
+  const date = new Date(value);
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
 }
 
 export function ftpHistoryToDto(entry: AthleteFtpHistory): FtpHistoryDto {
@@ -58,14 +68,15 @@ export async function getOrCreateAthleteProfile(userId: string): Promise<Athlete
       create: { userId, ...defaultProfileDbInput() },
       update: {},
     });
+    const effectiveFrom = utcDateOnly(profile.createdAt);
     await transaction.athleteFtpHistory.upsert({
       where: {
-        userId_effectiveFrom: { userId, effectiveFrom: profile.createdAt },
+        userId_effectiveFrom: { userId, effectiveFrom },
       },
       create: {
         userId,
         ftp: profile.ftp,
-        effectiveFrom: profile.createdAt,
+        effectiveFrom,
         source: "profile-initialization",
       },
       update: {},
@@ -79,7 +90,7 @@ async function recomputeCurrentFtp(
   userId: string,
 ): Promise<void> {
   const latest = await transaction.athleteFtpHistory.findFirst({
-    where: { userId },
+    where: { userId, effectiveFrom: { lte: utcDateOnly() } },
     orderBy: { effectiveFrom: "desc" },
   });
   if (!latest) throw new FtpHistoryError("At least one FTP history entry is required.", 409);
@@ -139,14 +150,22 @@ export async function updateFtpHistoryEntry(
 }
 
 export async function deleteFtpHistoryEntry(userId: string, entryId: string) {
-  await db.$transaction(async (transaction) => {
-    const existing = await transaction.athleteFtpHistory.findFirst({ where: { id: entryId, userId } });
-    if (!existing) throw new FtpHistoryError("FTP history entry not found.", 404);
-    const count = await transaction.athleteFtpHistory.count({ where: { userId } });
-    if (count <= 1) throw new FtpHistoryError("The final FTP history entry cannot be deleted.", 409);
-    await transaction.athleteFtpHistory.delete({ where: { id: existing.id } });
-    await recomputeCurrentFtp(transaction, userId);
-  });
+  for (let attempt = 0; attempt < SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      await db.$transaction(async (transaction) => {
+        const existing = await transaction.athleteFtpHistory.findFirst({ where: { id: entryId, userId } });
+        if (!existing) throw new FtpHistoryError("FTP history entry not found.", 404);
+        const count = await transaction.athleteFtpHistory.count({ where: { userId } });
+        if (count <= 1) throw new FtpHistoryError("The final FTP history entry cannot be deleted.", 409);
+        await transaction.athleteFtpHistory.delete({ where: { id: existing.id } });
+        await recomputeCurrentFtp(transaction, userId);
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      return;
+    } catch (error) {
+      const retryable = error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+      if (!retryable || attempt === SERIALIZABLE_RETRY_LIMIT - 1) throw error;
+    }
+  }
 }
 
 export async function resolveFtpForDate(userId: string, activityDate: Date) {
@@ -163,15 +182,20 @@ export async function resolveFtpForDate(userId: string, activityDate: Date) {
   return earliest;
 }
 
-export async function syncCurrentProfileFtp(userId: string, ftp: number) {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  await db.$transaction(async (transaction) => {
-    await transaction.athleteFtpHistory.upsert({
+export async function syncCurrentProfileFtp(
+  userId: string,
+  ftp: number,
+  transaction?: Prisma.TransactionClient,
+) {
+  const today = utcDateOnly();
+  const sync = async (client: Prisma.TransactionClient) => {
+    await client.athleteFtpHistory.upsert({
       where: { userId_effectiveFrom: { userId, effectiveFrom: today } },
       create: { userId, ftp, effectiveFrom: today, source: "profile" },
       update: { ftp, source: "profile" },
     });
-    await recomputeCurrentFtp(transaction, userId);
-  });
+    await recomputeCurrentFtp(client, userId);
+  };
+  if (transaction) return sync(transaction);
+  return db.$transaction(sync);
 }

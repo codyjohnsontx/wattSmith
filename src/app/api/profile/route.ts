@@ -50,54 +50,46 @@ export async function PATCH(request: Request) {
       return Response.json({ errors: result.errors }, { status: 400 });
     }
 
-    const existingProfile = await db.athleteProfile.findUnique({
-      where: { userId: user.id },
-      select: { updatedAt: true, ftp: true },
-    });
+    let profile: DbAthleteProfile | null;
+    try {
+      profile = await db.$transaction(async (transaction) => {
+        const existingProfile = await transaction.athleteProfile.findUnique({
+          where: { userId: user.id },
+          select: { updatedAt: true, ftp: true },
+        });
 
-    let profile: DbAthleteProfile;
-    if (existingProfile) {
-      const updateResult = await db.athleteProfile.updateMany({
-        where: {
-          userId: user.id,
-          updatedAt: expectedUpdatedAt,
-        },
-        data: profileToDbInput(result.profile),
+        if (existingProfile) {
+          const updateResult = await transaction.athleteProfile.updateMany({
+            where: { userId: user.id, updatedAt: expectedUpdatedAt },
+            data: profileToDbInput(result.profile),
+          });
+          if (updateResult.count === 0) return null;
+        } else {
+          await transaction.athleteProfile.create({
+            data: { userId: user.id, ...profileToDbInput(result.profile) },
+          });
+        }
+
+        if (!existingProfile || existingProfile.ftp !== result.profile.ftp) {
+          await syncCurrentProfileFtp(user.id, result.profile.ftp, transaction);
+        }
+        return transaction.athleteProfile.findUniqueOrThrow({ where: { userId: user.id } });
       });
-
-      if (updateResult.count === 0) {
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         return Response.json(
           { error: "Profile has changed since this edit started. Refresh and try again." },
           { status: 409 },
         );
       }
-
-      profile = await db.athleteProfile.findUniqueOrThrow({
-        where: { userId: user.id },
-      });
-    } else {
-      try {
-        profile = await db.athleteProfile.create({
-          data: {
-            userId: user.id,
-            ...profileToDbInput(result.profile),
-          },
-        });
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-          return Response.json(
-            { error: "Profile has changed since this edit started. Refresh and try again." },
-            { status: 409 },
-          );
-        }
-
-        throw error;
-      }
+      throw error;
     }
 
-    if (!existingProfile || existingProfile.ftp !== result.profile.ftp) {
-      await syncCurrentProfileFtp(user.id, result.profile.ftp);
-      profile = await db.athleteProfile.findUniqueOrThrow({ where: { userId: user.id } });
+    if (!profile) {
+      return Response.json(
+        { error: "Profile has changed since this edit started. Refresh and try again." },
+        { status: 409 },
+      );
     }
     return Response.json(dbProfileToAthleteProfile(profile));
   } catch (error) {

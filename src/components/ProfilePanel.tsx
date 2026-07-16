@@ -5,7 +5,7 @@ import { getProfileWarnings } from "@/lib/workout/warnings";
 import type { IntegrationConnection } from "@/lib/integrations/types";
 import type { AthleteProfile, Workout } from "@/lib/workout/types";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 
 interface ProfilePanelProps {
   profile: AthleteProfile;
@@ -13,6 +13,7 @@ interface ProfilePanelProps {
   integrations: IntegrationConnection[];
   onSave: (profile: AthleteProfile) => Promise<AthleteProfile>;
   onReload: () => Promise<AthleteProfile>;
+  onNavigate?: ComponentProps<typeof Link>["onNavigate"];
 }
 
 const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -21,23 +22,32 @@ function inputClassName() {
   return "mt-1 h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300";
 }
 
-export function ProfilePanel({ profile, workout, integrations, onSave, onReload }: ProfilePanelProps) {
+export function ProfilePanel({ profile, workout, integrations, onSave, onReload, onNavigate }: ProfilePanelProps) {
   const [draft, setDraft] = useState(profile);
   const [savedBaseline, setSavedBaseline] = useState(profile);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error" | "conflict">("idle");
   const [error, setError] = useState("");
   const savingRef = useRef(false);
+  const savedBaselineRef = useRef(profile);
   const isDirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(savedBaseline), [draft, savedBaseline]);
   const warnings = getProfileWarnings(draft, workout);
+
+  useEffect(() => {
+    setDraft((current) => JSON.stringify(current) === JSON.stringify(savedBaselineRef.current) ? profile : current);
+    savedBaselineRef.current = profile;
+    setSavedBaseline(profile);
+  }, [profile]);
 
   const save = async () => {
     if (savingRef.current || !isDirty) return;
     savingRef.current = true;
     setSaveState("saving");
     setError("");
+    const submitted = draft;
     try {
-      const saved = await onSave(draft);
-      setDraft(saved);
+      const saved = await onSave(submitted);
+      setDraft((current) => JSON.stringify(current) === JSON.stringify(submitted) ? saved : current);
+      savedBaselineRef.current = saved;
       setSavedBaseline(saved);
       setSaveState("saved");
     } catch (saveError) {
@@ -54,6 +64,7 @@ export function ProfilePanel({ profile, workout, integrations, onSave, onReload 
     try {
       const latest = await onReload();
       setDraft(latest);
+      savedBaselineRef.current = latest;
       setSavedBaseline(latest);
       setSaveState("idle");
     } catch (reloadError) {
@@ -252,7 +263,7 @@ export function ProfilePanel({ profile, workout, integrations, onSave, onReload 
               </div>
             ))}
           </div>
-          <Link href="/activities" className="mt-4 inline-block text-sm font-semibold text-cyan-200 underline underline-offset-4">
+          <Link href="/activities" onNavigate={onNavigate} className="mt-4 inline-block text-sm font-semibold text-cyan-200 underline underline-offset-4">
             Manage Strava connection
           </Link>
         </section>

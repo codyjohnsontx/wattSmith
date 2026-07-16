@@ -36,7 +36,6 @@ model AthleteFtpHistory {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, effectiveFrom])
-  @@index([userId, effectiveFrom])
 }
 
 model StravaConnection {

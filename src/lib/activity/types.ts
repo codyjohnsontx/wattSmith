@@ -86,6 +86,7 @@ export interface DurabilityComparison {
 
 export interface ActivityChartPoint {
   second: number;
+  segment: number;
   power: number | null;
   heartRate: number | null;
   cadence: number | null;

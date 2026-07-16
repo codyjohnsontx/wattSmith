@@ -59,8 +59,15 @@ function normalizeWorkout(workout: Workout): Workout {
 }
 
 function workoutFingerprint(workout: Workout): string {
-  const content = { ...normalizeWorkout(workout), updatedAt: undefined };
+  const content = Object.fromEntries(
+    Object.entries(normalizeWorkout(workout)).filter(([key]) => key !== "favorite" && key !== "updatedAt"),
+  );
   return JSON.stringify(content);
+}
+
+function mergeWorkoutFingerprint(snapshot: string, values: Partial<Workout>) {
+  if (!snapshot) return snapshot;
+  return workoutFingerprint({ ...JSON.parse(snapshot) as Workout, ...values });
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
@@ -110,6 +117,7 @@ interface WorkoutWorkspaceProps {
 
 export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialTab);
+  const [profilePanelMounted, setProfilePanelMounted] = useState(initialTab === "profile");
   const [workoutHistory, setWorkoutHistory] = useState(() =>
     createWorkoutHistory(cloneDefaultWorkout()),
   );
@@ -126,14 +134,30 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
   );
   const statusTimeoutRef = useRef<number | undefined>(undefined);
   const editorPristineRef = useRef(true);
+  const activeWorkoutRef = useRef(workoutHistory.present);
+  const navigationApprovedRef = useRef(false);
   const workout = workoutHistory.present;
   const canUndoWorkout = canUndoWorkoutHistory(workoutHistory);
   const canRedoWorkout = canRedoWorkoutHistory(workoutHistory);
   const hasUnsavedChanges = workoutFingerprint(workout) !== lastSavedSnapshot;
 
+  useEffect(() => {
+    activeWorkoutRef.current = workout;
+  }, [workout]);
+
   const confirmDiscard = useCallback(() => {
     if (!hasUnsavedChanges) return true;
     return window.confirm("Discard unsaved workout changes?");
+  }, [hasUnsavedChanges]);
+
+  const guardLinkNavigation = useCallback((event: { preventDefault: () => void }) => {
+    if (navigationApprovedRef.current) {
+      navigationApprovedRef.current = false;
+      return;
+    }
+    if (hasUnsavedChanges && !window.confirm("Discard unsaved workout changes and leave this page?")) {
+      event.preventDefault();
+    }
   }, [hasUnsavedChanges]);
 
   const flashStatus = useCallback((message: string) => {
@@ -267,6 +291,8 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
       if (!window.confirm("Discard unsaved workout changes and leave this page?")) {
         event.preventDefault();
         event.stopPropagation();
+      } else {
+        navigationApprovedRef.current = true;
       }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -274,6 +300,33 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("click", handleInternalNavigation, true);
+    };
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const marker = `wattsmith-unsaved-${Date.now()}`;
+    window.history.pushState({ ...window.history.state, wattsmithUnsavedGuard: marker }, "", window.location.href);
+    let restoringGuard = false;
+
+    const handlePopState = () => {
+      if (restoringGuard) {
+        restoringGuard = false;
+        return;
+      }
+      if (window.confirm("Discard unsaved workout changes and leave this page?")) {
+        window.removeEventListener("popstate", handlePopState);
+        window.history.back();
+      } else {
+        restoringGuard = true;
+        window.history.forward();
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      if (window.history.state?.wattsmithUnsavedGuard === marker) window.history.back();
     };
   }, [hasUnsavedChanges]);
 
@@ -354,6 +407,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
       createdAt: workoutToSave.createdAt || timestamp,
       updatedAt: timestamp,
     };
+    const submittedFingerprint = workoutFingerprint(nextWorkout);
 
     try {
       if (workoutToSave.id === workout.id) setSaveState("saving");
@@ -362,10 +416,12 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
         body: JSON.stringify(nextWorkout),
       });
 
-      if (nextWorkout.id === workout.id) {
+      if (activeWorkoutRef.current.id === nextWorkout.id) {
         setWorkoutHistory((current) => ({
           ...current,
-          present: normalizeWorkout(savedWorkout),
+          present: current.present.id === nextWorkout.id && workoutFingerprint(current.present) === submittedFingerprint
+            ? normalizeWorkout(savedWorkout)
+            : current.present,
         }));
         setLastSavedSnapshot(workoutFingerprint(savedWorkout));
         setSaveState("saved");
@@ -409,8 +465,14 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
       body: JSON.stringify({ name }),
     });
     setSavedWorkouts((current) => upsertWorkoutInList(current, renamed));
-    if (workout.id === id) {
-      setWorkoutHistory((current) => ({ ...current, present: renamed }));
+    if (activeWorkoutRef.current.id === id) {
+      setWorkoutHistory((current) => ({
+        ...current,
+        present: current.present.id === id
+          ? { ...current.present, name: renamed.name, updatedAt: renamed.updatedAt }
+          : current.present,
+      }));
+      setLastSavedSnapshot((current) => mergeWorkoutFingerprint(current, { name: renamed.name }));
     }
     flashStatus("Workout renamed");
     return renamed;
@@ -428,6 +490,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
   };
 
   const handleDeleteWorkout = async (id: string) => {
+    if (workout.id === id && !confirmDiscard()) return;
     try {
       await apiRequest<void>(`/api/workouts/${id}`, { method: "DELETE" });
 
@@ -530,7 +593,10 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    if (tab.id === "profile") setProfilePanelMounted(true);
+                    setActiveTab(tab.id);
+                  }}
                   className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
                     activeTab === tab.id
                       ? "bg-cyan-300 text-slate-950"
@@ -647,14 +713,17 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
           />
         ) : null}
 
-        {activeTab === "profile" ? (
-          <ProfilePanel
-            profile={profile}
-            workout={workout}
-            integrations={integrations}
-            onSave={handleProfileSave}
-            onReload={handleProfileReload}
-          />
+        {profilePanelMounted ? (
+          <div hidden={activeTab !== "profile"}>
+            <ProfilePanel
+              profile={profile}
+              workout={workout}
+              integrations={integrations}
+              onSave={handleProfileSave}
+              onReload={handleProfileReload}
+              onNavigate={guardLinkNavigation}
+            />
+          </div>
         ) : null}
 
         {activeTab === "export" ? <ExportPanel key={workout.id} workout={workout} /> : null}

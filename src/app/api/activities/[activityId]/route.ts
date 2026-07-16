@@ -4,7 +4,7 @@ import type { StravaActivityResponse, StravaStreamResponse } from "@/lib/integra
 import { authenticationErrorResponse, requireUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { resolveFtpForDate, FtpHistoryError } from "@/lib/server/profile";
-import { normalizeStravaStreams, stravaActivityToSummary } from "@/lib/server/strava/activities";
+import { isCyclingActivity, normalizeStravaStreams, stravaActivityToSummary } from "@/lib/server/strava/activities";
 import { cacheStravaResource, getCachedStravaResource } from "@/lib/server/strava/cache";
 import { stravaApiFetch, StravaApiError } from "@/lib/server/strava/client";
 
@@ -19,14 +19,12 @@ export async function GET(_request: Request, context: Context) {
     if (!connection) throw new StravaApiError("Connect Strava to continue.", 409, "not_connected");
     const activityKey = `activities:detail:${activityId}`;
     const streamsKey = `activities:streams:${activityId}`;
-    const [cachedActivity, cachedStreams] = await Promise.all([
-      getCachedStravaResource<StravaActivityResponse>(user.id, activityKey),
-      getCachedStravaResource<StravaStreamResponse[] | Record<string, StravaStreamResponse>>(user.id, streamsKey),
-    ]);
+    const cachedActivity = await getCachedStravaResource<StravaActivityResponse>(user.id, activityKey);
     const activity = cachedActivity?.payload ?? await stravaApiFetch<StravaActivityResponse>(user.id, `/activities/${activityId}`);
-    if (String(activity.athlete?.id ?? "") !== connection.athleteId) {
+    if (String(activity.athlete?.id ?? "") !== connection.athleteId || !isCyclingActivity(activity)) {
       return Response.json({ error: "Activity not found for the connected athlete." }, { status: 404 });
     }
+    const cachedStreams = await getCachedStravaResource<StravaStreamResponse[] | Record<string, StravaStreamResponse>>(user.id, streamsKey);
     const streams = cachedStreams?.payload ?? await stravaApiFetch<StravaStreamResponse[] | Record<string, StravaStreamResponse>>(
       user.id,
       `/activities/${activityId}/streams?keys=time,moving,watts,heartrate,cadence,distance,altitude&key_by_type=true`,

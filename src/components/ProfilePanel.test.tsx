@@ -37,4 +37,20 @@ describe("ProfilePanel save reliability", () => {
     await user.click(screen.getByRole("button", { name: "Reload latest profile" }));
     expect(onReload).toHaveBeenCalledOnce();
   });
+
+  it("preserves edits made while a profile save is in flight", async () => {
+    const user = userEvent.setup();
+    let resolveSave: (value: typeof defaultProfile) => void = () => undefined;
+    const onSave = vi.fn(() => new Promise<typeof defaultProfile>((resolve) => { resolveSave = resolve; }));
+    render(<ProfilePanel profile={defaultProfile} workout={cloneDefaultWorkout()} integrations={[]} onSave={onSave} onReload={vi.fn()} />);
+    const goal = screen.getByLabelText("Primary goal");
+    await user.clear(goal);
+    await user.type(goal, "Submitted goal");
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await user.clear(goal);
+    await user.type(goal, "Newer draft");
+    resolveSave({ ...defaultProfile, primaryGoal: "Submitted goal" });
+    expect(await screen.findByDisplayValue("Newer draft")).toBeInTheDocument();
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+  });
 });

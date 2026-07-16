@@ -53,10 +53,20 @@ describe("activity analysis", () => {
   });
 
   it("downsamples to 1,500 points while preserving a local power maximum", () => {
-    const points = Array.from({ length: 10_000 }, (_, second) => ({ second, power: second === 5_005 ? 999 : 100, heartRate: 150, cadence: 90, altitude: null }));
+    const points = Array.from({ length: 10_000 }, (_, second) => ({ second, segment: 0, power: second === 5_005 ? 999 : 100, heartRate: 150, cadence: 90, altitude: null }));
     const result = downsampleActivityChart(points);
     expect(result.length).toBeLessThanOrEqual(1500);
     expect(result.some((point) => point.power === 999)).toBe(true);
+  });
+
+  it("preserves long-gap segment markers in chart output", () => {
+    const analysis = analyzeActivity({
+      streams: { time: [0, 1, 10, 11], watts: [200, 210, 220, 230] },
+      ftp: 250,
+      ftpEffectiveFrom: "2026-01-01",
+      hasDevicePower: true,
+    });
+    expect(analysis.chart.map((point) => point.segment)).toEqual([0, 0, 1, 1]);
   });
 
   it("keeps the committed synthetic fixture metrics stable", () => {

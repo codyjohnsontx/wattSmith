@@ -8,6 +8,7 @@ const cyclingSportTypes = new Set([
   "MountainBikeRide",
   "EBikeRide",
   "EMountainBikeRide",
+  "Handcycle",
   "Velomobile",
 ]);
 

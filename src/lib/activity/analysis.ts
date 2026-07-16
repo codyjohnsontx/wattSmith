@@ -182,6 +182,7 @@ export function analyzeActivity({ streams, ftp, ftpEffectiveFrom, hasDevicePower
   const workKilojoules = averagePower === null ? null : (averagePower * validPower.length) / 1000;
   const chart = downsampleActivityChart(samples.map((sample) => ({
     second: sample.second,
+    segment: sample.segment,
     power: sample.power,
     heartRate: sample.heartRate,
     cadence: sample.cadence,
