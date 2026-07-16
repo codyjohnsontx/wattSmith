@@ -1,18 +1,28 @@
-# Testing Tech Debt
+# Testing and Technical Debt
 
-## High Priority
+## Completed Baseline
 
-- API route tests currently use mocked `auth` and Prisma clients, not a real database. This keeps the phase 1 PR lean, but later persistence coverage should use an isolated Prisma integration harness against Postgres or test containers.
-- `WorkoutWorkspace` profile saving does not yet share the fuller stale-response and session-expiry handling used by `ProfileSettings`. Consolidate profile API client logic after phase 1 review churn settles.
-- Route-handler persistence logic is embedded directly in Next route files. If handler tests continue to grow, extract focused service functions for profile, workout, and migration persistence.
+- Phase 1 workout and profile route-handler hardening is complete with authenticated ownership, validation, conflict, and migration coverage.
+- Component test infrastructure is active through jsdom, Testing Library, jest-dom, and user-event.
+- GitHub Actions runs dependency install, Prisma generation, Vitest, ESLint, and the production build.
+- The public demo has a desktop/mobile Playwright smoke flow covering activity selection, series toggling, summary, zones, peaks, durability, data quality, and screenshots.
+
+## Immediate High-Risk Surfaces
+
+- OAuth callback state/scope behavior, expired-state handling, token refresh rotation, concurrent refresh conflict resolution, disconnect, and webhook deauthorization need broader route-level mocked-HTTP coverage.
+- Cache expiry/invalidation, lazy pagination end conditions, Strava `401`/`429`/partial responses, and connection revocation need route tests.
+- Analytics calculations need continued fixtures for pauses, gaps, sparse streams, historical FTP boundaries, rolling-window validity, and source response changes. Current unit tests cover zones, weighted power, peaks, gaps, missing metrics, downsampling extrema, and a stable synthetic fixture.
+- Profile and rename component coverage should expand to full workspace unsaved-action confirmation and blur/Enter de-duplication.
+
+## Open Integration Debt
+
+- Route tests still mock Auth.js and Prisma. A real isolated Postgres harness remains open and should be introduced alongside the next FTP/Strava persistence iteration; CI should add Postgres as a service at that point.
+- Migration verification currently reviews and unit-tests behavior around schema services, but should execute the backfill against representative pre-migration Postgres data.
+- Real Strava OAuth remains outside browser E2E by design. Route handlers should continue using mocked upstream HTTP responses; never put live access/refresh tokens in fixtures, logs, snapshots, or CI secrets without an explicit secure-test plan.
 
 ## Medium Priority
 
-- Local migration imports are capped at 100 workouts, but writes still run sequentially inside one transaction. Switch to chunked or bulk operations if import volume grows.
-- Reusable workout blocks remain local-only by design in phase 1. Revisit before calendar or planning workflows depend on reusable blocks server-side.
-- No GitHub Actions CI workflow exists yet. Recommended future CI command set: `npm ci`, `npm run db:generate`, `npm run test`, `npm run lint`, `npm run build`.
-
-## Lower Priority
-
-- No component-level tests exist for the migration prompt or profile save UI. Defer jsdom/testing-library setup until the UI test value justifies the added infrastructure.
-- No E2E auth harness exists. Defer OAuth E2E until app flows stabilize, then consider a mocked session or test provider path.
+- Extract more route orchestration into service functions if mocked route suites grow substantially.
+- Local migration writes are capped at 100 workouts but remain sequential inside one transaction; chunk if real imports approach that cap.
+- Reusable workout blocks remain browser-local until a server-backed prescription or planning workflow depends on them.
+- Add accessibility automation to the public demo smoke suite and explicit reduced-motion visual checks.

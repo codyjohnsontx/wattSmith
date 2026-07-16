@@ -1,6 +1,6 @@
+import type { IntegrationConnection } from "@/lib/integrations/types";
 import type {
   AthleteProfile,
-  IntegrationConnection,
   ReusableBlockCategory,
   ReusableWorkoutBlock,
   TargetMode,

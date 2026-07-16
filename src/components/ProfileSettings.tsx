@@ -1,16 +1,16 @@
 "use client";
 
 import { ProfilePanel } from "@/components/ProfilePanel";
+import { apiRequest } from "@/lib/client/api";
 import { cloneDefaultWorkout } from "@/lib/workout/defaultWorkout";
 import { loadIntegrationConnections } from "@/lib/workout/storage";
-import type { AthleteProfile, IntegrationConnection } from "@/lib/workout/types";
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { IntegrationConnection } from "@/lib/integrations/types";
+import type { AthleteProfile } from "@/lib/workout/types";
+import { useEffect, useMemo, useState } from "react";
 
 export function ProfileSettings({ initialProfile }: { initialProfile: AthleteProfile }) {
   const [profile, setProfile] = useState(initialProfile);
   const [integrations, setIntegrations] = useState<IntegrationConnection[]>([]);
-  const [error, setError] = useState("");
-  const saveVersionRef = useRef(0);
   const workout = useMemo(() => ({ ...cloneDefaultWorkout(), ftp: profile.ftp }), [profile.ftp]);
 
   useEffect(() => {
@@ -21,47 +21,19 @@ export function ProfileSettings({ initialProfile }: { initialProfile: AthletePro
     return () => window.clearTimeout(timeoutId);
   }, []);
 
-  const updateProfile = (nextProfile: AthleteProfile) => {
-    const previousProfile = profile;
-    const saveVersion = saveVersionRef.current + 1;
-    saveVersionRef.current = saveVersion;
-    setError("");
-    setProfile(nextProfile);
-    void fetch("/api/profile", {
+  const saveProfile = async (nextProfile: AthleteProfile) => {
+    const saved = await apiRequest<AthleteProfile>("/api/profile", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(nextProfile),
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          if (response.status === 401) {
-            window.location.assign("/sign-in");
-            throw new Error("Session expired. Redirecting to sign in.");
-          }
+    });
+    setProfile(saved);
+    return saved;
+  };
 
-          const body = await response.json().catch(() => undefined);
-          const message =
-            typeof body?.error === "string"
-              ? body.error
-              : Array.isArray(body?.errors)
-                ? body.errors.join(" ")
-                : "Could not save profile.";
-          throw new Error(message);
-        }
-
-        return response.json() as Promise<AthleteProfile>;
-      })
-      .then((savedProfile) => {
-        if (saveVersionRef.current === saveVersion) {
-          setProfile(savedProfile);
-        }
-      })
-      .catch((saveError) => {
-        if (saveVersionRef.current === saveVersion) {
-          setProfile(previousProfile);
-          setError(saveError instanceof Error ? saveError.message : "Could not save profile.");
-        }
-      });
+  const reloadProfile = async () => {
+    const latest = await apiRequest<AthleteProfile>("/api/profile");
+    setProfile(latest);
+    return latest;
   };
 
   return (
@@ -70,13 +42,9 @@ export function ProfileSettings({ initialProfile }: { initialProfile: AthletePro
         profile={profile}
         workout={workout}
         integrations={integrations}
-        onChange={updateProfile}
+        onSave={saveProfile}
+        onReload={reloadProfile}
       />
-      {error ? (
-        <p className="mt-4 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-100">
-          {error}
-        </p>
-      ) : null}
     </div>
   );
 }

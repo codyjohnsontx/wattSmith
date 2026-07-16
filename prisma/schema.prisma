@@ -18,8 +18,54 @@ model User {
   sessions       Session[]
   athleteProfile AthleteProfile?
   workouts       StructuredWorkout[]
+  ftpHistory     AthleteFtpHistory[]
+  stravaConnection StravaConnection?
+  stravaCacheEntries StravaCacheEntry[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
+}
+
+model AthleteFtpHistory {
+  id            String   @id @default(cuid())
+  userId        String
+  ftp           Int
+  effectiveFrom DateTime @db.Date
+  source        String   @default("manual")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, effectiveFrom])
+}
+
+model StravaConnection {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  athleteId            String
+  encryptedAccessToken String
+  encryptedRefreshToken String
+  accessTokenExpiresAt DateTime
+  scopes               String[]
+  connectedAt          DateTime @default(now())
+  lastRefreshedAt      DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([athleteId])
+}
+
+model StravaCacheEntry {
+  id          String   @id @default(cuid())
+  userId      String
+  resourceKey String
+  payload     Json
+  fetchedAt   DateTime @default(now())
+  expiresAt   DateTime
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, resourceKey])
+  @@index([expiresAt])
 }
 
 model Account {

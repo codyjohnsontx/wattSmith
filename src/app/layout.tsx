@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Wattsmith",
-  description: "Build reusable FTP-based cycling workouts and export MRC or ERG files.",
+  description: "Analyze cycling demands, design custom workouts, and export MRC or ERG files.",
 };
 
 export default function RootLayout({

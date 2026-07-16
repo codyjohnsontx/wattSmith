@@ -6,9 +6,11 @@ export const config = {
     "/app/:path*",
     "/workouts/:path*",
     "/settings/:path*",
+    "/activities/:path*",
     "/api/profile/:path*",
     "/api/workouts/:path*",
     "/api/migration/:path*",
+    "/api/activities/:path*",
   ],
 };
 

@@ -1,135 +1,91 @@
 # Wattsmith Product Roadmap
 
-Wattsmith is becoming a dense cycling training command center inspired by Intervals-style workflows: fast workout creation, athlete context, planned training, completed ride analysis, and clear fitness/load signals in one focused app.
+## North Star
 
-## Product North Star
+Wattsmith is an analysis-to-prescription workspace:
 
-Build the single-athlete cycling workspace a rider can open every day to decide what to ride, understand recent training, compare planned work against actual rides, and maintain a reusable workout library without leaving the calendar/dashboard context.
+`Completed rides from Strava → detailed Wattsmith analysis → custom workout design → export to TrainerRoad or another execution platform`
 
-## Current State
+The current audience is the rider/power user who wants trustworthy race and hard-ride analysis. Coach/rider collaboration is a later expansion built on explicit athlete consent and athlete-owned FIT/TCX uploads.
 
-- Local-first percentage-based workout builder.
-- Saved workouts, reusable blocks, profile assumptions, favorites, and integrations are browser-local.
-- Export flow supports `.mrc` and `.erg` previews, validation, file naming, and committed fixture tests.
-- Training rationale/source notes exist for templates and workouts.
-- Profile assumptions drive warnings but are not account-backed.
+## Product Boundaries
 
-## Accepted MVP Scope
+Wattsmith analyzes cycling power data, explains race and workout demands, turns selected findings into workout inputs, and exports workouts for execution elsewhere. It does not record rides, replace Strava history/social features, execute indoor workouts, compete with TrainerRoad as a player, expose one athlete’s Strava API data to another user, or add generative coaching before deterministic calculations are trusted.
 
-- Single-athlete product.
-- Cycling-first training model.
-- Cloud-backed authentication and persistence.
-- Strava-first integration later, not in phase 1.
-- Dense calendar/dashboard as the primary future workspace.
-- Existing workout builder remains a core workflow, not a side utility.
+## External Constraints
 
-## Phase Breakdown
+- Strava data is visible only to the connected athlete. Coach views will exclude raw and derived Strava displays unless future written policy approval explicitly permits them.
+- Raw and derived Strava caches expire within seven days. Full history means lazy backward pagination, not eager permanent replication.
+- Tokens are encrypted, rotated refresh tokens are persisted, OAuth scopes are product-visible, disconnect revokes access and clears cached records, and webhook deletion/deauthorization is idempotent.
+- New Strava applications have limited athlete capacity and require Strava review to scale.
+- Webhooks are preferred over polling; rate limits, revocation, incomplete streams, estimated power, and missing data are visible product states.
 
-### Phase 1: Auth, Database, Server-Backed Profile/Workouts
+## Phase 1: Cloud Foundation — Complete
 
-- Add Auth.js sign-in.
-- Add Postgres persistence through Prisma.
-- Create server-backed athlete profile.
-- Persist saved workouts to the database while preserving the current `Workout` editor shape.
-- Add one-time import from existing browser-local profile/workouts.
-- Protect app and API routes that require a signed-in user.
+- Auth.js application sign-in and Prisma/Postgres persistence.
+- Server-backed athlete profile and workout library.
+- One-time local-data migration and authenticated ownership checks.
+- Workout route-handler hardening.
+- Existing builder, library, chart, validation, and export behavior preserved.
 
-### Phase 2: Calendar And Planned Sessions
+Success gate: signed-in athletes own persisted profiles/workouts, legacy data can be imported safely, protected routes reject other users, and all Phase 1 tests pass.
 
-- Add planned session model.
-- Build dense calendar/dashboard view.
-- Allow workouts to be scheduled, moved, completed, or removed from plan.
-- Show upcoming work and weekly structure from server data.
+## Phase 1.5: Product Trust and Delivery Baseline — Complete
 
-### Phase 3: Strava Sync And Activity Ingestion
+- Explicit, single-flight profile saving with preserved conflict drafts and reload-latest recovery.
+- Commit-once workout rename with Escape cancellation and failed-save restoration.
+- Unsaved/saving/saved/failed workout states plus destructive action, navigation, and unload guards.
+- Shared typed API/session error handling.
+- jsdom, Testing Library, user-event, component tests, and GitHub Actions CI.
+- Documentation and public-demo screenshot workflow.
 
-- Add Strava OAuth.
-- Import completed rides.
-- Store activity summaries and relevant streams.
-- Reconcile completed activities with planned sessions.
+Success gate: normal editing cannot race profile or rename requests; unsaved work is not silently discarded; every pull request runs install, generation, tests, lint, and build.
 
-### Phase 4: Fitness/Load Analytics
+## Phase 2: Analytics Foundation — Implemented
 
-- Add load metrics such as CTL, ATL, form, weekly load, and intensity distribution.
-- Explain calculation assumptions in-product.
-- Keep analytics cycling-first and athlete-scoped.
+- Dated FTP history with migration backfill, current-value recomputation, protected CRUD, and activity-date lookup.
+- Separate revocable Strava OAuth connection with signed state, required scopes, AES-256-GCM token encryption, refresh rotation, disconnect, and webhooks.
+- Lazy full-history cycling table with seven-day page caches and no eager stream loading.
+- Deep activity analysis with one-second moving resampling, pause exclusion, gap rules, power quality, weighted load, zones, peaks, durability, and extrema-preserving chart downsampling.
+- Public synthetic race demo using the same analysis functions and components.
 
-### Phase 5: Activity Detail And Planned-Vs-Actual
+Success gate: every activity uses its historical FTP; only its connected athlete can request it; list and detail caches never exceed seven days; missing/estimated data is explained; `/demo` works without authentication.
 
-- Add activity detail pages.
-- Compare completed rides against planned workouts.
-- Surface compliance, missed targets, and notable training outcomes.
+## Phase 3: Analysis to Prescription
 
-### Phase 6: Power Curve And Activity Table
+- Let the rider select the activity finding to address.
+- Convert the selected demand profile into explicit builder inputs rather than an opaque prescription.
+- Create a new unsaved workout linked to source-analysis identity without copying prohibited Strava data into shared records.
+- Export through the existing `.mrc` and `.erg` verification workflow.
 
-- Add power curve views.
-- Add dense activity table with filtering and sorting.
-- Connect activity table, power curve, and calendar/dashboard drilldowns.
+Success gate: the rider can explain which finding shaped the workout and edit every generated input before saving or exporting.
 
-## Phase 1 Implementation Checklist
+## Phase 4: Athlete-Owned Imports and Coaching Foundation
 
-- Replace local-only profile persistence with `GET /api/profile` and `PATCH /api/profile`.
-- Replace saved workout persistence with authenticated workout APIs.
-- Keep reusable workout blocks local in phase 1 unless they block workout import/save behavior.
-- Add Prisma models for Auth.js users/accounts/sessions plus `AthleteProfile` and `StructuredWorkout`.
-- Store workout blocks/cues/rationale as JSON in phase 1.
-- Keep workout-level FTP on `StructuredWorkout`.
-- Add GitHub OAuth as the first provider.
-- Add authenticated app shell with Dashboard, Workouts, and Settings.
-- Redirect `/` based on auth state.
-- Add one-time local import prompt after sign-in.
-- Do not delete local storage automatically.
-- Preserve existing builder, library, chart, validation, and export behavior.
-- Keep `npm run test`, `npm run lint`, and `npm run build` passing.
+- Import athlete-owned FIT/TCX files and track provenance separately from Strava.
+- Add rider/coach roles, invitations, consent, and revocation.
+- Permit coach access only to athlete-owned uploads and Wattsmith-authored records.
+- Let coaches create and assign workouts while Strava-derived raw data and displays remain excluded.
 
-## Known Decisions And Defaults
+Success gate: every shared datum has explicit athlete-controlled provenance and revocable access; Strava-derived data cannot enter coach views.
 
-- Auth: Auth.js through `next-auth`.
-- First provider: GitHub OAuth.
-- Database: Postgres.
-- ORM: Prisma.
-- Package manager: npm.
-- Architecture: single Next app.
-- Workout storage: JSON-backed `StructuredWorkout` records in phase 1.
-- Profile arrays: Postgres string arrays for `availableDays` and `constraints`.
-- Authorization: all profile/workout queries are scoped to the signed-in user.
+## Phase 5: Plans and Planned-vs-Actual
 
-## Deferred Scope
+- Plans, scheduled sessions, and immutable workout snapshots.
+- Match athlete-owned completed activities to planned sessions and compare intent with completion.
+- Add calendar views only after analysis and prescription workflows are established.
 
-- Strava OAuth and sync.
-- Calendar/planned-session database model.
-- Activity ingestion.
-- CTL/ATL/form calculations.
-- Workout execution matching.
-- Multi-athlete or coaching support.
-- Fully normalized workout-step database schema.
-- Production deployment automation.
-- AI/RAG assistant work.
+Success gate: later workout-library edits cannot rewrite assigned sessions, and comparisons clearly distinguish planned targets from athlete-owned actual data.
 
-## Completed Builder Foundation
+## Phase 6: Longitudinal Analytics
 
-- Template preview, duplication, and start-from-blank flows.
-- Collapse/expand and drag/drop workout editing.
-- Session-only undo/redo and keyboard shortcuts.
-- Inline validation aligned with export validation.
-- Reusable block library with protected starter blocks and custom block manager.
-- Saved workout library search, sort, difficulty filtering, favorites, and onboarding/empty states.
-- `.mrc` / `.erg` previews, file naming controls, and export readiness checks.
-- Automated export verification through round-trip parsing and golden-file fixture diffs.
-- Full-width zone-colored workout chart with hover/pin readouts.
-- Basic athlete profile fields, warnings, integration placeholders, and cited rationale/source registry.
+- Power-curve history, load and intensity-distribution trends, rider-strength profiles, and race/block comparisons.
+- Explain every calculation, input assumption, and data-quality limitation in product.
 
-## Acceptance Criteria
+Success gate: longitudinal metrics are reproducible from documented inputs and remain useful under sparse/missing-stream conditions.
 
-Phase 1 is complete when:
+## Deferred / Non-goals
 
-- This roadmap is the canonical Intervals-style product roadmap.
-- The app supports Auth.js sign-in.
-- The app has a Prisma-backed Postgres schema.
-- Athlete profile persists to the database.
-- Saved workouts persist to the database.
-- Current workout builder/editor/export behavior still works.
-- Existing local workouts can be imported once after sign-in.
-- Protected app routes require authentication.
-- Tests, lint, and build pass.
-- The app is ready for phase 2 calendar planning without another persistence refactor.
+Calendar-first planning, AI-generated coaching, workout execution, social activity history, coach access to Strava data, production deployment automation, and permanent eager activity replication are explicitly deferred or excluded.
+
+References: [Strava API policy](https://www.strava.com/legal/api_policy), [OAuth](https://developers.strava.com/docs/authentication/), [activity/stream reference](https://developers.strava.com/docs/reference/), [webhooks](https://developers.strava.com/docs/webhooks/), and [rate limits](https://developers.strava.com/docs/rate-limits/).

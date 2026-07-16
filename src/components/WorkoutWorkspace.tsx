@@ -1,6 +1,8 @@
 "use client";
 
 import { ExportPanel } from "@/components/ExportPanel";
+import { apiRequest } from "@/lib/client/api";
+import type { IntegrationConnection } from "@/lib/integrations/types";
 import { ProfilePanel } from "@/components/ProfilePanel";
 import { WorkoutChart } from "@/components/WorkoutChart";
 import { WorkoutEditor } from "@/components/WorkoutEditor";
@@ -28,7 +30,6 @@ import {
 } from "@/lib/workout/storage";
 import type {
   AthleteProfile,
-  IntegrationConnection,
   ReusableWorkoutBlock,
   Workout,
   WorkoutStep,
@@ -55,6 +56,18 @@ function normalizeWorkout(workout: Workout): Workout {
     ...workout,
     ftp: clampNumber(Math.round(workout.ftp), 1),
   };
+}
+
+function workoutFingerprint(workout: Workout): string {
+  const content = Object.fromEntries(
+    Object.entries(normalizeWorkout(workout)).filter(([key]) => key !== "favorite" && key !== "updatedAt"),
+  );
+  return JSON.stringify(content);
+}
+
+function mergeWorkoutFingerprint(snapshot: string, values: Partial<Workout>) {
+  if (!snapshot) return snapshot;
+  return workoutFingerprint({ ...JSON.parse(snapshot) as Workout, ...values });
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
@@ -87,25 +100,6 @@ function createBlankWorkout(ftp: number): Workout {
   };
 }
 
-async function readApi<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => undefined);
-    throw new Error(
-      payload?.errors?.join(" ") ?? payload?.error ?? `Request failed with ${response.status}`,
-    );
-  }
-
-  return response.json() as Promise<T>;
-}
-
 function upsertWorkoutInList(workouts: Workout[], workout: Workout): Workout[] {
   const next = workouts.some((item) => item.id === workout.id)
     ? workouts.map((item) => (item.id === workout.id ? workout : item))
@@ -123,6 +117,7 @@ interface WorkoutWorkspaceProps {
 
 export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialTab);
+  const [profilePanelMounted, setProfilePanelMounted] = useState(initialTab === "profile");
   const [workoutHistory, setWorkoutHistory] = useState(() =>
     createWorkoutHistory(cloneDefaultWorkout()),
   );
@@ -133,11 +128,37 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
   const [selectedStepId, setSelectedStepId] = useState<string | undefined>("warmup");
   const [collapsedStepIds, setCollapsedStepIds] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState("Ready");
+  const [saveState, setSaveState] = useState<"unsaved" | "saving" | "saved" | "failed">("saved");
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() =>
+    workoutFingerprint(cloneDefaultWorkout()),
+  );
   const statusTimeoutRef = useRef<number | undefined>(undefined);
   const editorPristineRef = useRef(true);
+  const activeWorkoutRef = useRef(workoutHistory.present);
+  const navigationApprovedRef = useRef(false);
   const workout = workoutHistory.present;
   const canUndoWorkout = canUndoWorkoutHistory(workoutHistory);
   const canRedoWorkout = canRedoWorkoutHistory(workoutHistory);
+  const hasUnsavedChanges = workoutFingerprint(workout) !== lastSavedSnapshot;
+
+  useEffect(() => {
+    activeWorkoutRef.current = workout;
+  }, [workout]);
+
+  const confirmDiscard = useCallback(() => {
+    if (!hasUnsavedChanges) return true;
+    return window.confirm("Discard unsaved workout changes?");
+  }, [hasUnsavedChanges]);
+
+  const guardLinkNavigation = useCallback((event: { preventDefault: () => void }) => {
+    if (navigationApprovedRef.current) {
+      navigationApprovedRef.current = false;
+      return;
+    }
+    if (hasUnsavedChanges && !window.confirm("Discard unsaved workout changes and leave this page?")) {
+      event.preventDefault();
+    }
+  }, [hasUnsavedChanges]);
 
   const flashStatus = useCallback((message: string) => {
     if (statusTimeoutRef.current !== undefined) {
@@ -179,6 +200,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
 
   const updateWorkout = useCallback((nextWorkout: Workout) => {
     editorPristineRef.current = false;
+    setSaveState("unsaved");
     setWorkoutHistory((current) => pushWorkoutHistory(current, normalizeWorkout(nextWorkout)));
   }, []);
 
@@ -207,8 +229,8 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
       try {
         setStatus("Loading server library");
         const [serverProfile, serverWorkouts] = await Promise.all([
-          readApi<AthleteProfile>("/api/profile"),
-          readApi<Workout[]>("/api/workouts"),
+          apiRequest<AthleteProfile>("/api/profile"),
+          apiRequest<Workout[]>("/api/workouts"),
         ]);
 
         if (cancelled) return;
@@ -221,9 +243,13 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
         if (editorPristineRef.current) {
           if (serverWorkouts[0]) {
             replaceActiveWorkout(serverWorkouts[0]);
+            setLastSavedSnapshot(workoutFingerprint(serverWorkouts[0]));
           } else {
-            replaceActiveWorkout({ ...cloneDefaultWorkout(), ftp: serverProfile.ftp });
+            const starter = { ...cloneDefaultWorkout(), ftp: serverProfile.ftp };
+            replaceActiveWorkout(starter);
+            setLastSavedSnapshot(workoutFingerprint(starter));
           }
+          setSaveState("saved");
         }
 
         setStatus("Ready");
@@ -249,6 +275,60 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
       }
     };
   }, [replaceActiveWorkout]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const handleInternalNavigation = (event: MouseEvent) => {
+      if (!hasUnsavedChanges || event.defaultPrevented) return;
+      const target = event.target instanceof Element ? event.target.closest("a") : null;
+      if (!(target instanceof HTMLAnchorElement)) return;
+      const destination = new URL(target.href, window.location.href);
+      if (destination.origin !== window.location.origin || destination.pathname === window.location.pathname) return;
+      if (!window.confirm("Discard unsaved workout changes and leave this page?")) {
+        event.preventDefault();
+        event.stopPropagation();
+      } else {
+        navigationApprovedRef.current = true;
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("click", handleInternalNavigation, true);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("click", handleInternalNavigation, true);
+    };
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const marker = `wattsmith-unsaved-${Date.now()}`;
+    window.history.pushState({ ...window.history.state, wattsmithUnsavedGuard: marker }, "", window.location.href);
+    let restoringGuard = false;
+
+    const handlePopState = () => {
+      if (restoringGuard) {
+        restoringGuard = false;
+        return;
+      }
+      if (window.confirm("Discard unsaved workout changes and leave this page?")) {
+        window.removeEventListener("popstate", handlePopState);
+        window.history.back();
+      } else {
+        restoringGuard = true;
+        window.history.forward();
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      if (window.history.state?.wattsmithUnsavedGuard === marker) window.history.back();
+    };
+  }, [hasUnsavedChanges]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -327,22 +407,29 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
       createdAt: workoutToSave.createdAt || timestamp,
       updatedAt: timestamp,
     };
+    const submittedFingerprint = workoutFingerprint(nextWorkout);
 
     try {
-      const savedWorkout = await readApi<Workout>("/api/workouts", {
+      if (workoutToSave.id === workout.id) setSaveState("saving");
+      const savedWorkout = await apiRequest<Workout>("/api/workouts", {
         method: "POST",
         body: JSON.stringify(nextWorkout),
       });
 
-      if (nextWorkout.id === workout.id) {
+      if (activeWorkoutRef.current.id === nextWorkout.id) {
         setWorkoutHistory((current) => ({
           ...current,
-          present: normalizeWorkout(savedWorkout),
+          present: current.present.id === nextWorkout.id && workoutFingerprint(current.present) === submittedFingerprint
+            ? normalizeWorkout(savedWorkout)
+            : current.present,
         }));
+        setLastSavedSnapshot(workoutFingerprint(savedWorkout));
+        setSaveState("saved");
       }
       setSavedWorkouts((current) => upsertWorkoutInList(current, savedWorkout));
       flashStatus("Saved to library");
     } catch (error) {
+      if (workoutToSave.id === workout.id) setSaveState("failed");
       flashStatus(error instanceof Error ? error.message : "Could not save workout");
     }
   };
@@ -352,7 +439,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
     if (!currentWorkout) return;
 
     try {
-      const toggled = await readApi<Workout>(`/api/workouts/${id}`, {
+      const toggled = await apiRequest<Workout>(`/api/workouts/${id}`, {
         method: "PATCH",
         body: JSON.stringify({ favorite: !currentWorkout.favorite }),
       });
@@ -372,27 +459,48 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
     }
   };
 
+  const handleRenameWorkout = async (id: string, name: string) => {
+    const renamed = await apiRequest<Workout>(`/api/workouts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    });
+    setSavedWorkouts((current) => upsertWorkoutInList(current, renamed));
+    if (activeWorkoutRef.current.id === id) {
+      setWorkoutHistory((current) => ({
+        ...current,
+        present: current.present.id === id
+          ? { ...current.present, name: renamed.name, updatedAt: renamed.updatedAt }
+          : current.present,
+      }));
+      setLastSavedSnapshot((current) => mergeWorkoutFingerprint(current, { name: renamed.name }));
+    }
+    flashStatus("Workout renamed");
+    return renamed;
+  };
+
   const handleNewWorkout = () => {
+    if (!confirmDiscard()) return;
     editorPristineRef.current = false;
     const nextWorkout = createBlankWorkout(profile.ftp);
     replaceActiveWorkout(nextWorkout);
+    setLastSavedSnapshot("");
+    setSaveState("unsaved");
     setActiveTab("builder");
     flashStatus("Started blank workout");
   };
 
   const handleDeleteWorkout = async (id: string) => {
+    if (workout.id === id && !confirmDiscard()) return;
     try {
-      const response = await fetch(`/api/workouts/${id}`, { method: "DELETE" });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => undefined);
-        throw new Error(payload?.error ?? `Delete failed with ${response.status}`);
-      }
+      await apiRequest<void>(`/api/workouts/${id}`, { method: "DELETE" });
 
       const nextSavedWorkouts = savedWorkouts.filter((item) => item.id !== id);
       setSavedWorkouts(nextSavedWorkouts);
       if (workout.id === id) {
         const nextWorkout = nextSavedWorkouts[0] ?? createBlankWorkout(profile.ftp);
         replaceActiveWorkout(nextWorkout);
+        setLastSavedSnapshot(nextSavedWorkouts[0] ? workoutFingerprint(nextWorkout) : "");
+        setSaveState(nextSavedWorkouts[0] ? "saved" : "unsaved");
       }
       flashStatus("Deleted workout");
     } catch (error) {
@@ -412,16 +520,20 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
     flashStatus("Deleted reusable block");
   };
 
-  const handleProfileChange = (nextProfile: AthleteProfile) => {
-    setProfile(nextProfile);
-    void readApi<AthleteProfile>("/api/profile", {
+  const handleProfileSave = async (nextProfile: AthleteProfile) => {
+    const saved = await apiRequest<AthleteProfile>("/api/profile", {
       method: "PATCH",
       body: JSON.stringify(nextProfile),
-    })
-      .then(setProfile)
-      .catch((error) =>
-        flashStatus(error instanceof Error ? error.message : "Could not save profile"),
-      );
+    });
+    setProfile(saved);
+    flashStatus("Profile saved");
+    return saved;
+  };
+
+  const handleProfileReload = async () => {
+    const latest = await apiRequest<AthleteProfile>("/api/profile");
+    setProfile(latest);
+    return latest;
   };
 
   return (
@@ -481,7 +593,10 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    if (tab.id === "profile") setProfilePanelMounted(true);
+                    setActiveTab(tab.id);
+                  }}
                   className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
                     activeTab === tab.id
                       ? "bg-cyan-300 text-slate-950"
@@ -495,6 +610,9 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
 
             <div className="flex flex-wrap items-center gap-2">
               <span className="mr-2 text-sm text-slate-400">{status}</span>
+              <span className={`text-xs font-semibold uppercase tracking-[0.14em] ${saveState === "failed" ? "text-red-300" : saveState === "saved" && !hasUnsavedChanges ? "text-emerald-300" : "text-amber-200"}`} aria-live="polite">
+                {saveState === "saving" ? "Saving" : saveState === "failed" ? "Save failed" : hasUnsavedChanges ? "Unsaved" : "Saved"}
+              </span>
               <button
                 type="button"
                 disabled={!canUndoWorkout}
@@ -528,9 +646,12 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
               <button
                 type="button"
                 onClick={() => {
+                  if (!confirmDiscard()) return;
                   editorPristineRef.current = false;
                   const starter = { ...cloneDefaultWorkout(), ftp: profile.ftp };
                   replaceActiveWorkout(starter);
+                  setLastSavedSnapshot("");
+                  setSaveState("unsaved");
                   flashStatus("Reset to starter");
                 }}
                 className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-cyan-300"
@@ -575,25 +696,34 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
             activeFtp={workout.ftp}
             profile={profile}
             onLoad={(nextWorkout) => {
+              if (!confirmDiscard()) return;
               editorPristineRef.current = false;
               replaceActiveWorkout(nextWorkout);
+              const saved = savedWorkouts.some((item) => item.id === nextWorkout.id);
+              setLastSavedSnapshot(saved ? workoutFingerprint(nextWorkout) : "");
+              setSaveState(saved ? "saved" : "unsaved");
               setActiveTab("builder");
               flashStatus("Loaded workout");
             }}
             onSaveWorkout={handleSaveWorkout}
+            onRenameWorkout={handleRenameWorkout}
             onDeleteWorkout={handleDeleteWorkout}
             onToggleFavorite={handleToggleFavorite}
             onCreateNew={handleNewWorkout}
           />
         ) : null}
 
-        {activeTab === "profile" ? (
-          <ProfilePanel
-            profile={profile}
-            workout={workout}
-            integrations={integrations}
-            onChange={handleProfileChange}
-          />
+        {profilePanelMounted ? (
+          <div hidden={activeTab !== "profile"}>
+            <ProfilePanel
+              profile={profile}
+              workout={workout}
+              integrations={integrations}
+              onSave={handleProfileSave}
+              onReload={handleProfileReload}
+              onNavigate={guardLinkNavigation}
+            />
+          </div>
         ) : null}
 
         {activeTab === "export" ? <ExportPanel key={workout.id} workout={workout} /> : null}
