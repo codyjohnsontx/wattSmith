@@ -1,0 +1,14 @@
+<workout_file>
+    <author>Wattsmith</author>
+    <name>Tempo Range</name>
+    <description>Tempo written as power ranges, ridden at the midpoint.</description>
+    <sportType>bike</sportType>
+    <category>Tempo</category>
+    <workout>
+        <Warmup Duration="600" PowerLow="0.5" PowerHigh="0.72"/>
+        <SteadyState Duration="1500" PowerLow="0.76" PowerHigh="0.87" ShowAvg="1"/>
+        <SteadyState Duration="300" Power="0.55"/>
+        <SteadyState Duration="1500" PowerLow="0.76" PowerHigh="0.87"/>
+        <Cooldown Duration="600" PowerLow="0.6" PowerHigh="0.4"/>
+    </workout>
+</workout_file>

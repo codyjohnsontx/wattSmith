@@ -58,6 +58,9 @@ export interface WorkoutStep {
   repeatCount?: number;
   children?: WorkoutStep[];
   cues?: WorkoutCue[];
+  // False marks a free-ride block: the trainer gets no ERG target and the
+  // %FTP value is only a placeholder for charts and exports. Absent means true.
+  ergEnabled?: boolean;
 }
 
 export interface ReusableWorkoutBlock {
@@ -126,6 +129,7 @@ export interface FlattenedSegment {
   endWatts: number;
   minWatts?: number;
   maxWatts?: number;
+  ergEnabled?: boolean;
 }
 
 export interface ZoneSummary {

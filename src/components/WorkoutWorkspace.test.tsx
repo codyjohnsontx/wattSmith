@@ -9,6 +9,7 @@ import { apiRequest } from "@/lib/client/api";
 import { cloneDefaultWorkout } from "@/lib/workout/defaultWorkout";
 import { defaultProfile } from "@/lib/workout/storage";
 import type { Workout } from "@/lib/workout/types";
+import type { ImportedWorkout } from "./ImportWorkoutButton";
 import { WorkoutWorkspace } from "./WorkoutWorkspace";
 
 vi.mock("@/lib/client/api", () => ({ apiRequest: vi.fn() }));
@@ -25,14 +26,26 @@ vi.mock("@/components/WorkoutEditor", () => ({
   ),
 }));
 vi.mock("@/components/WorkoutLibrary", () => ({
-  WorkoutLibrary: ({ workouts, onDeleteWorkout, onToggleFavorite }: {
+  WorkoutLibrary: ({ workouts, onDeleteWorkout, onToggleFavorite, onImportWorkout }: {
     workouts: Workout[];
     onDeleteWorkout: (id: string) => void;
     onToggleFavorite: (id: string) => void;
+    onImportWorkout: (draft: ImportedWorkout) => void;
   }) => (
     <div>
       <button type="button" onClick={() => onDeleteWorkout(workouts[0].id)}>Delete active</button>
       <button type="button" onClick={() => onToggleFavorite(workouts[0].id)}>Favorite active</button>
+      <button
+        type="button"
+        onClick={() => onImportWorkout({
+          workout: { ...cloneDefaultWorkout(), id: "imported-1", name: "Imported ride" },
+          warnings: ["Free ride block: no ERG target."],
+          fileName: "ride.zwo",
+          format: "zwo",
+        })}
+      >
+        Import fixture
+      </button>
     </div>
   ),
 }));
@@ -125,5 +138,32 @@ describe("WorkoutWorkspace save reliability", () => {
     await user.click(screen.getByRole("button", { name: "Library" }));
     await user.click(screen.getByRole("button", { name: "Favorite active" }));
     expect(await screen.findByText("Saved")).toBeInTheDocument();
+  });
+
+  it("opens an imported file as an unsaved builder draft with its warnings", async () => {
+    const user = userEvent.setup();
+    render(<WorkoutWorkspace initialTab="library" />);
+    await user.click(await screen.findByRole("button", { name: "Import fixture" }));
+
+    expect(screen.getByText("Current: Imported ride")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Import report" })).toHaveTextContent("ride.zwo · 1 warning");
+    expect(screen.getByText("Free ride block: no ERG target.")).toBeInTheDocument();
+    expect(screen.getByText("Unsaved")).toBeInTheDocument();
+    expect(apiRequest).not.toHaveBeenCalledWith("/api/workouts", expect.objectContaining({ method: "POST" }));
+
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("region", { name: "Import report" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the current draft when discarding it for an import is rejected", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<WorkoutWorkspace />);
+    expect(await screen.findByText("Current: Server workout")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit draft" }));
+    await user.click(screen.getByRole("button", { name: "Library" }));
+    await user.click(screen.getByRole("button", { name: "Import fixture" }));
+    await user.click(screen.getByRole("button", { name: "Builder" }));
+    expect(screen.getByText("Current: Server workout!")).toBeInTheDocument();
   });
 });

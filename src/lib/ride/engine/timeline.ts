@@ -13,7 +13,7 @@ export function buildTimeline(
   return flattenWorkout({ ...workout, ftp }, rangeStrategy).map((segment, index) => ({
     ...segment,
     index,
-    ergEnabled: true,
+    ergEnabled: segment.ergEnabled !== false,
   }));
 }
 

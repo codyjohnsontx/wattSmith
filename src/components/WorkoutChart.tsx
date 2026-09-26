@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { flattenWorkout } from "@/lib/workout/flatten";
 import { formatClock } from "@/lib/workout/math";
 import type { FlattenedSegment, Workout } from "@/lib/workout/types";
@@ -161,6 +161,7 @@ function formatSegmentTimeRange(segment: FlattenedSegment): string {
 }
 
 function formatMode(segment: FlattenedSegment): string {
+  if (segment.ergEnabled === false) return "Free ride, no ERG target";
   if (segment.targetMode === "ramp") return "Ramp";
   if (segment.targetMode === "range") return "Range";
   return segment.type.charAt(0).toUpperCase() + segment.type.slice(1);
@@ -273,6 +274,7 @@ function ChartTooltip({
 export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const freeRidePatternId = `free-ride-${useId().replace(/:/g, "")}`;
   const previousWorkoutRef = useRef(workout);
   const pinnedParentStepIdRef = useRef<string | undefined>(undefined);
   const [hoverState, setHoverState] = useState<HoverState | undefined>();
@@ -577,6 +579,11 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
             }
           }}
         >
+          <defs>
+            <pattern id={freeRidePatternId} width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="10" stroke="#020617" strokeWidth="4" opacity="0.55" />
+            </pattern>
+          </defs>
           <rect width={chartWidth} height={chartHeight} fill="#020617" />
 
           {xTicks.map((tick) => (
@@ -693,6 +700,10 @@ export function WorkoutChart({ workout, selectedStepId, onSelectStep }: WorkoutC
                   opacity={hovered ? 0.68 : selected ? 0.6 : 0.5}
                   pointerEvents="none"
                 />
+                {/* Free-ride blocks send no ERG target: hatch the placeholder. */}
+                {segment.ergEnabled === false ? (
+                  <path d={areaPath} fill={`url(#${freeRidePatternId})`} pointerEvents="none" />
+                ) : null}
                 {segment.targetMode === "range" &&
                 segment.minWatts !== undefined &&
                 segment.maxWatts !== undefined ? (

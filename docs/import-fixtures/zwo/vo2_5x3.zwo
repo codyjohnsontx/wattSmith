@@ -1,0 +1,18 @@
+<workout_file>
+    <author>Wattsmith</author>
+    <name>VO2 5x3</name>
+    <description>Five three-minute VO2 efforts with equal recovery.</description>
+    <sportType>bike</sportType>
+    <tags>
+        <tag name="VO2"/>
+    </tags>
+    <workout>
+        <Warmup Duration="480" PowerLow="0.5" PowerHigh="0.72"/>
+        <IntervalsT Repeat="5" OnDuration="180" OffDuration="180" OnPower="1.15" OffPower="0.5" Cadence="100" CadenceResting="85">
+            <textevent timeoffset="0" message="Go! Hold it smooth"/>
+            <textevent timeoffset="150" message="Thirty seconds, stay seated" duration="8"/>
+            <textevent timeoffset="190" message="Recover and breathe"/>
+        </IntervalsT>
+        <Cooldown Duration="420" PowerLow="0.6" PowerHigh="0.4"/>
+    </workout>
+</workout_file>
