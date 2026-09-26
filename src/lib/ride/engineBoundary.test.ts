@@ -1,4 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
@@ -6,8 +5,7 @@ import { describe, expect, it } from "vitest";
 // The engine is shared with a future phone app, so lint must reject React,
 // Next, DOM, timers and the wall clock inside src/lib/ride/engine.
 
-const engineDir = join(process.cwd(), "src/lib/ride/engine");
-const probePath = join(engineDir, "boundaryProbe.ts");
+const probePath = join(process.cwd(), "src/lib/ride/engine/boundaryProbe.ts");
 
 async function ruleIds(code: string): Promise<string[]> {
   const eslint = new ESLint({ cwd: process.cwd() });
@@ -16,13 +14,6 @@ async function ruleIds(code: string): Promise<string[]> {
 }
 
 describe("ride engine platform boundary", () => {
-  it("has no React imports", () => {
-    const offenders = readdirSync(engineDir).filter((file) =>
-      /from ["']react/.test(readFileSync(join(engineDir, file), "utf8")),
-    );
-    expect(offenders).toEqual([]);
-  });
-
   it.each([
     ['import { useState } from "react";\nexport const x = useState;', "no-restricted-imports"],
     ['import Link from "next/link";\nexport const x = Link;', "no-restricted-imports"],

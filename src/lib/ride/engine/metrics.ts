@@ -30,6 +30,13 @@ export function addSegmentSample(
   };
 }
 
+export function remapSegmentStats(
+  stats: Record<number, SegmentStats>,
+  remap: (segmentIndex: number) => number,
+): Record<number, SegmentStats> {
+  return Object.fromEntries(Object.entries(stats).map(([index, value]) => [remap(Number(index)), value]));
+}
+
 export interface SegmentComparison {
   segmentIndex: number;
   plannedWatts: number;

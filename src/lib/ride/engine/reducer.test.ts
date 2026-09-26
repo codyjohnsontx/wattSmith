@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Workout } from "@/lib/workout/types";
+import { segmentComparisons } from "./metrics";
 import { createRideState, currentTarget, reduce } from "./reducer";
 import { buildTimeline } from "./timeline";
 import type { EngineOptions, RideCommand, RideEvent, RideState, RideStatus, TrainerStatus } from "./types";
@@ -100,7 +101,7 @@ describe("ride reducer transitions", () => {
       check: (s) => expect(s.pauseReason).toBe("manual"),
     },
     {
-      name: "riding -> paused after 5 s of zero cadence",
+      name: "stays riding before autoPauseAfterMs of zero cadence",
       from: riding,
       events: [cadence(1_000, 0), ...ticks(1_000, 5_750)],
       to: "riding",
@@ -245,6 +246,14 @@ describe("skip, back and extend", () => {
     ]);
     expect(state.timeline[2].synthetic).toBe(true);
     expect(state.timeline.map((s) => s.index)).toEqual([0, 1, 2, 3, 4]);
+    expect(state.timeline.map((s) => [s.startPercentFTP, s.endPercentFTP])).toEqual([
+      [50, 50],
+      [50, 75],
+      [75, 75],
+      [75, 100],
+      [150, 150],
+    ]);
+    expect(new Set(state.timeline.map((s) => s.id)).size).toBe(5);
 
     const later = run(state, ticks(30_000, 60_000));
     expect(later.elapsedMs).toBe(120_000);
@@ -252,6 +261,27 @@ describe("skip, back and extend", () => {
     const end = run(later, ticks(60_000, 300_000));
     expect(end.status).toBe("finished");
     expect(end.elapsedMs).toBe(240_000);
+  });
+
+  it("keeps recorded segment indices on their segments after an extend renumbers them", () => {
+    const power = (nowMs: number): RideEvent => ({ type: "sample", nowMs, power: 150, source: "trainer" });
+    const state = run(riding(), [
+      command(0, "skip"),
+      command(0, "skip"),
+      ...ticks(0, 2_000),
+      power(2_000),
+      command(2_000, "back"),
+      ...ticks(2_000, 22_000),
+      power(22_000),
+      command(22_000, "extend"),
+      ...ticks(22_000, 23_000),
+    ]);
+    expect(state.timeline.map((s) => s.label)).toEqual(["Easy", "Ramp", "Ramp (extended)", "Ramp", "Hard"]);
+    expect(segmentComparisons(state).map((c) => [c.segmentIndex, c.plannedWatts])).toEqual([
+      [1, 133],
+      [4, 300],
+    ]);
+    expect(state.recorder.rows.slice(1, 4).map((row) => row.segmentIndex)).toEqual([4, 4, 1]);
   });
 });
 
@@ -298,6 +328,20 @@ describe("trainer commands", () => {
     expect(state.trainerCommands).toEqual([
       { type: "setErgMode", enabled: true },
       { type: "setTargetPower", watts: 150 },
+    ]);
+  });
+
+  it("sends the pause target when ERG is turned back on during a pause", () => {
+    const state = run(riding(), [
+      command(0, "skip"),
+      command(0, "skip"),
+      { type: "ergMode", nowMs: 0, enabled: false },
+      command(1_000, "pause"),
+      { type: "ergMode", nowMs: 2_000, enabled: true },
+    ]);
+    expect(state.trainerCommands).toEqual([
+      { type: "setErgMode", enabled: true },
+      { type: "setTargetPower", watts: 50 },
     ]);
   });
 

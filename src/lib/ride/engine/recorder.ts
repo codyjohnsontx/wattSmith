@@ -76,6 +76,20 @@ export function appendSample(recorder: RecorderState, sample: TrainerSample): Re
   return { ...recorder, bucket: next };
 }
 
+export function remapSegmentIndexes(
+  recorder: RecorderState,
+  remap: (segmentIndex: number) => number,
+): RecorderState {
+  const move = (index: number | null) => (index === null ? null : remap(index));
+  return {
+    rows: recorder.rows.map((row) => ({ ...row, segmentIndex: move(row.segmentIndex) })),
+    bucket: recorder.bucket && {
+      ...recorder.bucket,
+      snapshot: { ...recorder.bucket.snapshot, segmentIndex: move(recorder.bucket.snapshot.segmentIndex) },
+    },
+  };
+}
+
 // Closes the partial final second, if any time or data landed in it.
 export function finalizeRecorder(recorder: RecorderState, rideMs: number): RecorderState {
   const bucket = recorder.bucket;

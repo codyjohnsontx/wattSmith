@@ -21,17 +21,16 @@ export function timelineDurationMs(timeline: RideSegment[]): number {
   return timeline.length === 0 ? 0 : timeline[timeline.length - 1].endSeconds * 1000;
 }
 
-// Unbiased target at `seconds` into `segment`, linear on ramps.
-export function segmentWattsAt(segment: RideSegment, seconds: number): number {
-  if (segment.durationSeconds <= 0 || segment.startWatts === segment.endWatts) {
-    return segment.startWatts;
-  }
+function interpolate(segment: RideSegment, start: number, end: number, seconds: number): number {
+  if (segment.durationSeconds <= 0 || start === end) return start;
   // Multiply before dividing so whole-second positions give exact halves,
   // the same arithmetic a reader of the exported .erg points would use.
-  return (
-    segment.startWatts +
-    ((segment.endWatts - segment.startWatts) * (seconds - segment.startSeconds)) / segment.durationSeconds
-  );
+  return start + ((end - start) * (seconds - segment.startSeconds)) / segment.durationSeconds;
+}
+
+// Unbiased target at `seconds` into `segment`, linear on ramps.
+export function segmentWattsAt(segment: RideSegment, seconds: number): number {
+  return interpolate(segment, segment.startWatts, segment.endWatts, seconds);
 }
 
 // Adds `durationMs` at the current target by splitting the segment under
@@ -48,6 +47,7 @@ export function extendTimeline(
 
   const current = timeline[index];
   const watts = segmentWattsAt(current, at);
+  const percent = interpolate(current, current.startPercentFTP, current.endPercentFTP, at);
   const pieces: Omit<RideSegment, "index">[] = [];
 
   if (at > current.startSeconds) {
@@ -55,6 +55,7 @@ export function extendTimeline(
       ...current,
       endSeconds: at,
       durationSeconds: at - current.startSeconds,
+      endPercentFTP: percent,
       endWatts: watts,
     });
   }
@@ -66,15 +67,19 @@ export function extendTimeline(
     startSeconds: at,
     endSeconds: at + extra,
     durationSeconds: extra,
+    startPercentFTP: percent,
+    endPercentFTP: percent,
     startWatts: watts,
     endWatts: watts,
     synthetic: true,
   });
   pieces.push({
     ...current,
+    id: `${current.id}-rest-${Math.round(at)}`,
     startSeconds: at + extra,
     endSeconds: current.endSeconds + extra,
     durationSeconds: current.endSeconds - at,
+    startPercentFTP: percent,
     startWatts: watts,
   });
 

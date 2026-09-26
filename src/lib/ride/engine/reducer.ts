@@ -1,6 +1,12 @@
 import { ergCommandPolicy } from "./erg";
-import { addSegmentSample, pushPower } from "./metrics";
-import { advanceRecorder, appendSample, createRecorder, finalizeRecorder } from "./recorder";
+import { addSegmentSample, pushPower, remapSegmentStats } from "./metrics";
+import {
+  advanceRecorder,
+  appendSample,
+  createRecorder,
+  finalizeRecorder,
+  remapSegmentIndexes,
+} from "./recorder";
 import type { RecorderSnapshot } from "./recorder";
 import { targetAt } from "./targets";
 import { extendTimeline, findSegmentIndex, timelineDurationMs } from "./timeline";
@@ -282,6 +288,10 @@ function handleCommand(state: RideState, command: RideCommand, nowMs: number): R
       return jumpTo(state, toSegment.startSeconds * 1000, "back");
     }
     case "extend": {
+      const timeline = extendTimeline(state.timeline, state.elapsedMs, state.options.extendMs);
+      const inserted = timeline.length - state.timeline.length;
+      const firstMoved = state.elapsedMs / 1000 > segment.startSeconds ? index + 1 : index;
+      const remap = (i: number) => (i < firstMoved ? i : i + inserted);
       const lap: RideLap = {
         reason: "extend",
         atRideMs: state.rideMs,
@@ -290,7 +300,9 @@ function handleCommand(state: RideState, command: RideCommand, nowMs: number): R
       };
       return {
         ...state,
-        timeline: extendTimeline(state.timeline, state.elapsedMs, state.options.extendMs),
+        timeline,
+        segmentStats: remapSegmentStats(state.segmentStats, remap),
+        recorder: remapSegmentIndexes(state.recorder, remap),
         laps: [...state.laps, lap],
       };
     }
@@ -305,12 +317,13 @@ function handleBias(state: RideState, percent: number): RideState {
 
 function handleErgMode(state: RideState, enabled: boolean): RideState {
   if (state.status === "finished" || state.ergEnabled === enabled) return state;
-  return {
+  const next: RideState = {
     ...state,
     ergEnabled: enabled,
     erg: { lastSentWatts: null, lastSentAtMs: null },
     trainerCommands: [...state.trainerCommands, { type: "setErgMode", enabled }],
   };
+  return state.status === "paused" ? releaseTrainer(next) : next;
 }
 
 function handleTrainerStatus(state: RideState, status: TrainerStatus): RideState {
