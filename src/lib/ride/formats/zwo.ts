@@ -210,12 +210,14 @@ function readIntervals(element: XmlElement, where: string, context: ParseContext
     context,
     "ramp",
   );
-  const on: DraftStep = onTarget
-    ? { type: "steady", label: "On", durationSeconds: onSeconds, ...onTarget }
-    : (context.warnings.push(`${where} (on) has no power target; imported as free ride.`), freeRide("On", onSeconds));
+  if (!onTarget) {
+    context.warnings.push(`${where} (on) has no power target; the block was skipped.`);
+    return undefined;
+  }
+  const on: DraftStep = { type: "steady", label: "On", durationSeconds: onSeconds, ...onTarget };
 
   const offRaw = attrs.number("offduration");
-  const offSeconds = offRaw === undefined ? 0 : Math.round(offRaw);
+  let offSeconds = offRaw === undefined ? 0 : Math.round(offRaw);
   const children = [on];
   if (offSeconds > 0) {
     const offTarget = readTarget(
@@ -225,11 +227,12 @@ function readIntervals(element: XmlElement, where: string, context: ParseContext
       context,
       "ramp",
     );
-    children.push(
-      offTarget
-        ? { type: "recovery", label: "Off", durationSeconds: offSeconds, ...offTarget }
-        : (context.warnings.push(`${where} (off) has no power target; imported as free ride.`), freeRide("Off", offSeconds)),
-    );
+    if (offTarget) {
+      children.push({ type: "recovery", label: "Off", durationSeconds: offSeconds, ...offTarget });
+    } else {
+      context.warnings.push(`${where} (off) has no power target; the off part was dropped.`);
+      offSeconds = 0;
+    }
   }
 
   // Zwift repeats a text event's offset in every repetition, which is how a
@@ -275,8 +278,8 @@ function readBlock(element: XmlElement, index: number, context: ParseContext): D
       known.pair,
     );
     if (!target) {
-      context.warnings.push(`${where} has no power target; imported as free ride.`);
-      return withCues(freeRide(known.label, durationSeconds), readBlockCues(element, where, context));
+      context.warnings.push(`${where} has no power target; the block was skipped.`);
+      return undefined;
     }
     return withCues(
       { type: known.type, label: known.label, durationSeconds, ...target },

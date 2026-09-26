@@ -184,6 +184,43 @@ describe(".zwo edge cases", () => {
     expect(result.warnings).toContain("<Mystery> block 1: unsupported element, skipped.");
   });
 
+  it("skips a structured block whose power attribute is misspelled", () => {
+    const result = importOk(wrap('<SteadyState Duration="300" Powr="0.8"/><SteadyState Duration="60" Power="0.7"/>'), withXml);
+    expect(result.workout.blocks).toHaveLength(1);
+    expect(result.workout.blocks[0]).toMatchObject({ targetPercentFTP: 70, durationSeconds: 60 });
+    expect(result.workout.blocks[0].ergEnabled).toBeUndefined();
+    expect(result.warnings).toContain("<SteadyState> block 1 has no power target; the block was skipped.");
+  });
+
+  it("skips a ramp element with no readable power", () => {
+    const result = importOk(wrap('<Warmup Duration="300"/><SteadyState Duration="60" Power="0.7"/>'), withXml);
+    expect(result.workout.blocks).toHaveLength(1);
+    expect(result.warnings).toContain("<Warmup> block 1 has no power target; the block was skipped.");
+  });
+
+  it("skips an IntervalsT whose on part has no readable power", () => {
+    const result = importOk(
+      wrap('<IntervalsT Repeat="3" OnDuration="60" OffDuration="60" OnPowr="1.1" OffPower="0.5"/><SteadyState Duration="60" Power="0.7"/>'),
+      withXml,
+    );
+    expect(result.workout.blocks).toHaveLength(1);
+    expect(result.workout.blocks[0]).toMatchObject({ type: "steady", targetPercentFTP: 70 });
+    expect(result.warnings).toContain("<IntervalsT> block 1 (on) has no power target; the block was skipped.");
+  });
+
+  it("drops the off part of an IntervalsT whose off power is unreadable", () => {
+    const result = importOk(
+      wrap('<IntervalsT Repeat="3" OnDuration="60" OffDuration="60" OnPower="1.1" OffPowr="0.5"><textevent timeoffset="90" message="Spin"/></IntervalsT>'),
+      withXml,
+    );
+    const [repeat] = result.workout.blocks;
+    expect(repeat).toMatchObject({ type: "repeat", repeatCount: 3 });
+    expect(repeat.children).toHaveLength(1);
+    expect(repeat.children![0]).toMatchObject({ label: "On", durationSeconds: 60, targetPercentFTP: 110 });
+    expect(repeat.children![0].ergEnabled).toBeUndefined();
+    expect(result.warnings).toContain("<IntervalsT> block 1 (off) has no power target; the off part was dropped.");
+  });
+
   it.each([
     ["not XML at all", "hello <workout_file", "not valid XML"],
     ["an unclosed tag", "<workout_file><workout><SteadyState Duration='60' Power='0.7'></workout></workout_file>", "not valid XML"],

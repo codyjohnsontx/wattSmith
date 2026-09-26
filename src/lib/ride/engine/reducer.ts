@@ -266,8 +266,8 @@ function jumpTo(state: RideState, toElapsedMs: number, reason: RideLap["reason"]
 
 function handleCommand(state: RideState, command: RideCommand, nowMs: number): RideState {
   if (command === "discard") {
-    const released = isActive(state) ? releaseTrainer(state) : state;
-    return { ...released, status: "aborted", pauseReason: null };
+    const aborted: RideState = { ...state, status: "aborted", pauseReason: null };
+    return isActive(state) ? releaseTrainer(aborted) : aborted;
   }
 
   if (command === "start") {
