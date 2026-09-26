@@ -176,6 +176,12 @@ describe(".zwo edge cases", () => {
     expect(workout.blocks[0]).toMatchObject({ targetMode: "single", targetPercentFTP: 70 });
   });
 
+  it.each(["SteadyState", "SolidState"])("prefers Power over a PowerLow/PowerHigh pair on %s and warns", (tag) => {
+    const result = importOk(wrap(`<${tag} Duration="300" Power="0.9" PowerLow="0.5" PowerHigh="0.5"/>`), withXml);
+    expect(result.workout.blocks[0]).toMatchObject({ targetMode: "single", targetPercentFTP: 90 });
+    expect(result.warnings).toContain(`<${tag}> block 1 has both Power and PowerLow/PowerHigh; used Power and ignored the pair.`);
+  });
+
   it("skips an unknown timed element and warns", () => {
     const result = importOk(wrap('<Mystery Duration="120"/><SteadyState Duration="60" Power="0.7"/>'), withXml);
     expect(result.workout.blocks).toHaveLength(1);

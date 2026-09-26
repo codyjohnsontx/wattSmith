@@ -212,11 +212,12 @@ function readCues(rows: CourseSections["text"], shiftSeconds: number, warnings: 
   for (const row of rows) {
     const line = row.raw.trim();
     if (!line || line.startsWith(";")) continue;
-    // Tab separated: seconds<TAB>text<TAB>duration. Fall back to whitespace
-    // for files whose tabs were turned into spaces.
-    const columns = row.raw.includes("\t")
+    // Tab separated: seconds<TAB>text<TAB>duration. Without tabs the rest of
+    // the line after the time is all text.
+    const hasTab = row.raw.includes("\t");
+    const columns = hasTab
       ? row.raw.split("\t").map((column) => column.trim())
-      : (/^(\S+)\s+(.*?)(?:\s+(\d+(?:\.\d+)?))?$/.exec(line)?.slice(1) ?? []).map((column) => column?.trim());
+      : (/^(\S+)\s+(.*)$/.exec(line)?.slice(1) ?? []);
     const atSeconds = Number(columns[0]);
     const text = (columns[1] ?? "").replace(/\s+/g, " ").trim();
     if (!Number.isFinite(atSeconds) || !text) {
@@ -230,7 +231,11 @@ function readCues(rows: CourseSections["text"], shiftSeconds: number, warnings: 
     }
     let durationSeconds = Math.round(Number(columns[2]));
     if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-      warnings.push(`Line ${row.line}: text event has no duration; showing it for ${DEFAULT_CUE_SECONDS} s.`);
+      warnings.push(
+        hasTab
+          ? `Line ${row.line}: text event has no duration; showing it for ${DEFAULT_CUE_SECONDS} s.`
+          : `Line ${row.line}: text event has no tab between its columns; read the rest of the line as text and showing it for ${DEFAULT_CUE_SECONDS} s.`,
+      );
       durationSeconds = DEFAULT_CUE_SECONDS;
     }
     cues.push({ atSeconds: shifted, text: text.slice(0, MAX_CUE_TEXT_LENGTH), durationSeconds });

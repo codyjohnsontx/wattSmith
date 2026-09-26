@@ -126,18 +126,38 @@ describe(".erg/.mrc importer", () => {
     expect(flattenWorkout(result.workout).at(-1)?.endSeconds).toBe(43 * 60);
     expect(result.workout.cues).toMatchObject([
       { atSeconds: 240, text: "Settle into endurance pace", durationSeconds: 10 },
-      { atSeconds: 2100, text: "Opener one", durationSeconds: 10 },
+      { atSeconds: 2100, text: "Opener one 10", durationSeconds: 10 },
       { atSeconds: 2250, text: "Opener two", durationSeconds: 10 },
     ]);
     expect(result.warnings).toEqual([
       expect.stringContaining("shifted to start at 0"),
-      expect.stringContaining("Line 24: text event has no duration"),
-      expect.stringContaining("Line 26: text event has no duration"),
+      expect.stringContaining("Line 24: text event has no tab"),
+      expect.stringContaining("Line 25: text event has no tab"),
+      expect.stringContaining("Line 26: text event has no tab"),
     ]);
     expect(noErrors(result.workout)).toEqual([]);
   });
 
   const header = (units: string, extra = "") => `[COURSE HEADER]\n${extra}${units}\n[END COURSE HEADER]\n`;
+
+  it.each([
+    ["600 Interval 2", "Interval 2"],
+    ["900 Rep 3 of 5", "Rep 3 of 5"],
+  ])("keeps trailing numbers as text in the tabless text row %j", (row, text) => {
+    const result = importOk(`${header("MINUTES PERCENT")}[COURSE DATA]\n0 50\n20 50\n[COURSE TEXT]\n${row}\n`, {
+      fileName: "a.mrc",
+    });
+    expect(result.workout.cues).toMatchObject([{ atSeconds: Number(row.split(" ")[0]), text, durationSeconds: 10 }]);
+    expect(result.warnings).toEqual([expect.stringContaining("text event has no tab between its columns")]);
+  });
+
+  it("still reads the duration column of a tab separated text row", () => {
+    const result = importOk(`${header("MINUTES PERCENT")}[COURSE DATA]\n0 50\n20 50\n[COURSE TEXT]\n600\tRep 3 of 5\t15\n`, {
+      fileName: "a.mrc",
+    });
+    expect(result.workout.cues).toMatchObject([{ atSeconds: 600, text: "Rep 3 of 5", durationSeconds: 15 }]);
+    expect(result.warnings).toEqual([]);
+  });
 
   it("scales a watt file with no FTP by the rider's FTP and says so", () => {
     const result = importOk(`${header("MINUTES WATTS")}[COURSE DATA]\n0 150\n10 150\n[END COURSE DATA]\n`, {

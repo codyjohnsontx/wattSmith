@@ -126,6 +126,13 @@ function readTarget(
   const high = attrs.number(keys.high);
   const single = attrs.number(keys.single);
 
+  if (pair === "range" && single !== undefined) {
+    if (low !== undefined || high !== undefined) {
+      context.warnings.push(`${where} has both Power and PowerLow/PowerHigh; used Power and ignored the pair.`);
+    }
+    return { targetMode: "single", targetPercentFTP: toPercent(single, where, context) };
+  }
+
   if (low !== undefined && high !== undefined) {
     const start = toPercent(low, where, context);
     const end = toPercent(high, where, context);

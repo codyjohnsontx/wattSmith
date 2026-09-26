@@ -22,7 +22,7 @@ header keys, mixed case, a byte order mark).
 | `zwo/reverse_ramps.zwo` | Warmup going down, cooldown going up, workout-level text events |
 | `zwo/rough_edges.zwo` | Zero-length block, zero repeat, empty IntervalsT, two `<workout>` sections |
 | `course/threshold_3x10.mrc` | CRLF, `;` comments, space and tab columns, `%` suffix |
-| `course/endurance_goldencheetah.erg` | No `[END ...]` markers, extra header keys, first row not at 0, text events without durations |
+| `course/endurance_goldencheetah.erg` | No `[END ...]` markers, extra header keys, first row not at 0, space-separated text events (no duration column) |
 
 The eighteen `docs/export-fixtures` files are importer fixtures too: every one
 must re-import to the same timeline it was exported from.
