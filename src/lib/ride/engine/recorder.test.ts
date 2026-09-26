@@ -7,8 +7,7 @@ import type { RecorderSnapshot } from "./recorder";
 import { buildTimeline } from "./timeline";
 import type { RideEvent, RideState } from "./types";
 
-const snap = (workoutSeconds: number): RecorderSnapshot => ({
-  workoutSeconds,
+const snap = (): RecorderSnapshot => ({
   targetWatts: 200,
   segmentIndex: 0,
   ergEnabled: true,
@@ -17,13 +16,13 @@ const snap = (workoutSeconds: number): RecorderSnapshot => ({
 
 describe("recorder", () => {
   it("averages bursty samples within a second and leaves silent seconds null", () => {
-    let recorder = advanceRecorder(createRecorder(), 0, snap(0));
+    let recorder = advanceRecorder(createRecorder(), 0, snap());
     for (const power of [200, 210, 220, 230]) recorder = appendSample(recorder, { power, cadence: 90, source: "trainer" });
-    recorder = advanceRecorder(recorder, 1_000, snap(1));
-    recorder = advanceRecorder(recorder, 2_000, snap(2));
+    recorder = advanceRecorder(recorder, 1_000, snap());
+    recorder = advanceRecorder(recorder, 2_000, snap());
     recorder = appendSample(recorder, { heartRate: 141, source: "heartRateMonitor" });
     recorder = appendSample(recorder, { heartRate: 142, source: "heartRateMonitor" });
-    recorder = advanceRecorder(recorder, 3_000, snap(3));
+    recorder = advanceRecorder(recorder, 3_000, snap());
 
     expect(recorder.rows.map(({ t, power, cadence, heartRate }) => ({ t, power, cadence, heartRate }))).toEqual([
       { t: 0, power: 215, cadence: 90, heartRate: null },
@@ -33,9 +32,9 @@ describe("recorder", () => {
   });
 
   it("fills seconds skipped by a long tick with empty rows", () => {
-    let recorder = advanceRecorder(createRecorder(), 0, snap(0));
+    let recorder = advanceRecorder(createRecorder(), 0, snap());
     recorder = appendSample(recorder, { power: 180, source: "trainer" });
-    recorder = advanceRecorder(recorder, 3_500, snap(3));
+    recorder = advanceRecorder(recorder, 3_500, snap());
     expect(recorder.rows.map((row) => [row.t, row.power])).toEqual([
       [0, 180],
       [1, null],
@@ -49,8 +48,8 @@ describe("recorder", () => {
   });
 
   it("closes a partial final second only if it holds time or data", () => {
-    let recorder = advanceRecorder(createRecorder(), 0, snap(0));
-    recorder = advanceRecorder(recorder, 2_000, snap(2));
+    let recorder = advanceRecorder(createRecorder(), 0, snap());
+    recorder = advanceRecorder(recorder, 2_000, snap());
     expect(finalizeRecorder(recorder, 2_000).rows).toHaveLength(2);
     expect(finalizeRecorder(recorder, 2_400).rows).toHaveLength(3);
     expect(finalizeRecorder(appendSample(recorder, { power: 1, source: "trainer" }), 2_000).rows).toHaveLength(3);
@@ -58,8 +57,8 @@ describe("recorder", () => {
 
   it("maps rows to the activity analysis stream shape", () => {
     const streams = toActivityStreams([
-      { t: 0, workoutSeconds: 0, targetWatts: 100, power: 98, cadence: 90, heartRate: 120, segmentIndex: 0, ergEnabled: true, paused: false },
-      { t: 1, workoutSeconds: 1, targetWatts: 100, power: null, cadence: null, heartRate: null, segmentIndex: 0, ergEnabled: true, paused: true },
+      { t: 0, targetWatts: 100, power: 98, cadence: 90, heartRate: 120, segmentIndex: 0, ergEnabled: true, paused: false },
+      { t: 1, targetWatts: 100, power: null, cadence: null, heartRate: null, segmentIndex: 0, ergEnabled: true, paused: true },
     ]);
     expect(streams).toEqual({
       time: [0, 1],
@@ -115,7 +114,6 @@ describe("ride recording through the reducer", () => {
     expect(rows.map((r) => r.paused).lastIndexOf(false, 3)).toBe(3);
     expect(rows.slice(4, 9).every((r) => r.paused)).toBe(true);
     expect(rows[9].paused).toBe(false);
-    expect(rows[9].workoutSeconds).toBe(4);
     expect(rows[15].targetWatts).toBe(200);
     expect(rows[15].segmentIndex).toBe(1);
     expect(rows.every((r) => r.power !== null)).toBe(true);

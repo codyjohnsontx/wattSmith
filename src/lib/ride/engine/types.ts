@@ -99,8 +99,6 @@ export interface SegmentStats {
 export interface RecorderRow {
   // Ride clock second (includes pauses); maps to ActivityStreamSet.time.
   t: number;
-  // Workout position at the start of this second.
-  workoutSeconds: number;
   targetWatts: number | null;
   power: number | null;
   cadence: number | null;

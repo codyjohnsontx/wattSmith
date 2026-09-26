@@ -121,7 +121,6 @@ function isActive(state: RideState): boolean {
 function snapshot(state: RideState): RecorderSnapshot {
   const target = currentTarget(state);
   return {
-    workoutSeconds: Math.floor(state.elapsedMs / 1000),
     targetWatts: target?.watts ?? null,
     segmentIndex: target?.segment.index ?? null,
     ergEnabled: state.ergEnabled && (target?.segment.ergEnabled ?? false),
@@ -290,6 +289,8 @@ function handleCommand(state: RideState, command: RideCommand, nowMs: number): R
     case "extend": {
       const timeline = extendTimeline(state.timeline, state.elapsedMs, state.options.extendMs);
       const inserted = timeline.length - state.timeline.length;
+      if (inserted === 0) return state;
+      const shift = (ms: number) => (ms > state.elapsedMs ? ms + state.options.extendMs : ms);
       const firstMoved = state.elapsedMs / 1000 > segment.startSeconds ? index + 1 : index;
       const remap = (i: number) => (i < firstMoved ? i : i + inserted);
       const lap: RideLap = {
@@ -303,7 +304,10 @@ function handleCommand(state: RideState, command: RideCommand, nowMs: number): R
         timeline,
         segmentStats: remapSegmentStats(state.segmentStats, remap),
         recorder: remapSegmentIndexes(state.recorder, remap),
-        laps: [...state.laps, lap],
+        laps: [
+          ...state.laps.map((l) => ({ ...l, fromElapsedMs: shift(l.fromElapsedMs), toElapsedMs: shift(l.toElapsedMs) })),
+          lap,
+        ],
       };
     }
   }

@@ -145,6 +145,8 @@ export class SimulatedTrainer implements Trainer {
   // Control point: one outstanding write, newest queued write wins.
   private writeInFlight = false;
   private queuedWrite: QueuedWrite | null = null;
+  // Bumped on every link loss; responses from an older link are dropped.
+  private linkGeneration = 0;
 
   // Failure injection.
   private dropAtMs: number | null = null;
@@ -196,6 +198,7 @@ export class SimulatedTrainer implements Trainer {
 
   async disconnect(): Promise<void> {
     this.stopTimers();
+    this.loseLink();
     this.setStatus("disconnected");
     this.emitter.emit("disconnect", { reason: "requested" });
   }
@@ -296,11 +299,16 @@ export class SimulatedTrainer implements Trainer {
     this.scheduleSample();
   }
 
-  private drop(): void {
-    this.dropAtMs = null;
+  private loseLink(): void {
+    this.linkGeneration += 1;
     this.writeInFlight = false;
     this.queuedWrite?.resolve({ status: "rejected", reason: "notConnected" });
     this.queuedWrite = null;
+  }
+
+  private drop(): void {
+    this.dropAtMs = null;
+    this.loseLink();
 
     if (this.dropDownForMs === null) {
       this.setStatus("disconnected");
@@ -366,6 +374,7 @@ export class SimulatedTrainer implements Trainer {
   // retry clamped to the reported supported power range.
   private write(watts: number, resolve: (result: TargetPowerResult) => void, isRetry = false): void {
     this.writeInFlight = true;
+    const generation = this.linkGeneration;
     let settled = false;
 
     const settle = (result: TargetPowerResult) => {
@@ -373,6 +382,7 @@ export class SimulatedTrainer implements Trainer {
       settled = true;
       this.clock.clearTimeout(timeout);
       resolve(result);
+      if (generation !== this.linkGeneration) return;
       this.writeInFlight = false;
       const queued = this.queuedWrite;
       this.queuedWrite = null;
@@ -382,7 +392,7 @@ export class SimulatedTrainer implements Trainer {
     const timeout = this.clock.setTimeout(() => settle({ status: "timeout" }), this.options.controlTimeoutMs);
 
     const respond = () => {
-      if (this.currentStatus !== "connected") {
+      if (this.currentStatus !== "connected" || generation !== this.linkGeneration) {
         settle({ status: "rejected", reason: "notConnected" });
         return;
       }

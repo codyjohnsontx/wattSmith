@@ -149,6 +149,36 @@ describe("SimulatedTrainer failure injection", () => {
     expect(trainer.targetWatts).toBe(120);
   });
 
+  it("a write in flight when the link drops never lands after the reconnect", async () => {
+    const { clock, trainer } = await connected();
+    trainer.delayControlResponse(800);
+    trainer.dropConnectionAt(1, 200);
+    const results: TargetPowerResult[] = [];
+
+    clock.advance(500);
+    void trainer.setTargetPower(300).then((r) => (results[0] = r));
+    clock.advance(750);
+    expect(trainer.status).toBe("connected");
+    void trainer.setTargetPower(150).then((r) => (results[1] = r));
+
+    clock.advance(50);
+    await flushPromises();
+    expect(results[0]).toEqual({ status: "rejected", reason: "notConnected" });
+    expect(trainer.targetWatts).toBeNull();
+
+    clock.advance(100);
+    void trainer.setTargetPower(160).then((r) => (results[2] = r));
+    clock.advance(900);
+    await flushPromises();
+    expect(results[1]).toEqual({ status: "applied", watts: 150, clamped: false });
+    expect(trainer.targetWatts).toBe(150);
+
+    clock.advance(600);
+    await flushPromises();
+    expect(results[2]).toEqual({ status: "applied", watts: 160, clamped: false });
+    expect(trainer.targetWatts).toBe(160);
+  });
+
   it("delayControlResponse beyond the timeout reports a timeout but the trainer still applies the target", async () => {
     const { clock, trainer } = await connected({ controlTimeoutMs: 1_000 });
     trainer.delayControlResponse(1_500);
