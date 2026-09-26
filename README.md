@@ -10,6 +10,7 @@ Wattsmith is a cycling analysis-to-prescription workspace. It helps a rider unde
 - A cloud workout library with search, filters, favorites, reliable inline rename, duplication, deletion, and starter templates.
 - One-time migration of legacy browser-local workouts into the signed-in athlete’s cloud library; local data is not automatically deleted.
 - `.mrc` percentage export and `.erg` watt export with previews, file naming, validation warnings, text cues, round-trip parsing, and committed golden fixtures.
+- `.zwo`, `.erg` and `.mrc` import from the Library tab (button or drag-drop) into an unsaved builder draft, with a warnings report for anything the importer skipped or approximated. Zwift free-ride blocks import as hatched blocks with no ERG target.
 - Dated FTP history so activity calculations use the FTP effective on the ride date.
 - A separate, revocable Strava data connection with encrypted tokens, rotating refresh-token persistence, lazy activity pagination, and caches capped at seven days.
 - Deep race/hard-ride analysis: power coverage, weighted power, IF, estimated TSS, Wattsmith zones, peak efforts, variability, durability comparisons, and data-quality notes.

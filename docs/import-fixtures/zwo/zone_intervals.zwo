@@ -1,0 +1,13 @@
+<workout_file>
+    <author>Wattsmith</author>
+    <name>Zone Intervals</name>
+    <description>Intervals written with Zwift zone numbers instead of power fractions.</description>
+    <sportType>bike</sportType>
+    <ftpOverride>250</ftpOverride>
+    <workout>
+        <Warmup Duration="600" PowerLow="0.45" PowerHigh="0.7"/>
+        <IntervalsT Repeat="6" OnDuration="60" OffDuration="60" PowerOnZone="5" PowerOffZone="1"/>
+        <SteadyState Duration="600" Zone="2"/>
+        <Cooldown Duration="300" PowerLow="0.55" PowerHigh="0.4"/>
+    </workout>
+</workout_file>

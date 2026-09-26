@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-edited file: BOM, XML declaration, comments, a bare ampersand and
+     case variants of element and attribute names. -->
+<WORKOUT_FILE>
+    <Name>Tempo & Torque</Name>
+    <Description>Tempo with low-cadence torque work & a few surges.</Description>
+    <SportType>bike</SportType>
+    <Workout>
+        <warmup duration="599.5" powerlow="0.5" powerhigh="0.7"/>
+        <STEADYSTATE DURATION="900" POWER="0.82" CADENCE="60">
+            <TextEvent timeOffset="5" message="Big gear, low cadence"/>
+        </STEADYSTATE>
+        <SolidState Duration="600" Power="0.78"/>
+        <steadystate duration="120" power="1.05">
+            <TextNotification timeoffset="0" message="Surge!" duration="5"/>
+        </steadystate>
+        <cooldown duration="300" powerlow="0.6" powerhigh="0.4"/>
+    </Workout>
+</WORKOUT_FILE>

@@ -258,6 +258,18 @@ describe("workout helpers", () => {
     }
   });
 
+  it("warns that free ride blocks export as fixed targets", () => {
+    const workout: Workout = {
+      ...defaultWorkout,
+      blocks: [steadyStep("steady"), { ...steadyStep("free"), targetPercentFTP: 60, ergEnabled: false }],
+    };
+
+    const item = readinessItem(buildChecklist(workout), "free-ride");
+    expect(item.status).toBe("warn");
+    expect(item.message).toContain("1 free ride segment(s) will be written as fixed targets");
+    expect(buildChecklist(defaultWorkout).some((candidate) => candidate.id === "free-ride")).toBe(false);
+  });
+
   it("creates a preview readiness error when a preview is malformed", () => {
     const checklist = buildChecklist(defaultWorkout, "midpoint", { mrc: "" });
 

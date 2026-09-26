@@ -109,6 +109,7 @@ function flattenStep(
         endWatts: percentToWatts(ftp, endPercentFTP),
         minWatts: minPercentFTP === undefined ? undefined : percentToWatts(ftp, minPercentFTP),
         maxWatts: maxPercentFTP === undefined ? undefined : percentToWatts(ftp, maxPercentFTP),
+        ...(step.ergEnabled === false ? { ergEnabled: false } : {}),
       },
     ],
   };

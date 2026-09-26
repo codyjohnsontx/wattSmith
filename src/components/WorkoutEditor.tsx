@@ -389,10 +389,11 @@ function StepEditor({
       }
     : undefined;
 
+  const updateTarget = (patch: Partial<WorkoutStep>) => onChange({ ...step, ...patch, ergEnabled: undefined });
+
   const updateTargetMode = (mode: TargetMode) => {
     if (mode === "single") {
-      onChange({
-        ...step,
+      updateTarget({
         targetMode: "single",
         targetPercentFTP:
           step.targetPercentFTP ??
@@ -410,8 +411,7 @@ function StepEditor({
 
     if (mode === "range") {
       const target = step.targetPercentFTP ?? step.startPercentFTP ?? 75;
-      onChange({
-        ...step,
+      updateTarget({
         targetMode: "range",
         minPercentFTP: step.minPercentFTP ?? Math.max(0, target - 3),
         maxPercentFTP: step.maxPercentFTP ?? target + 3,
@@ -423,8 +423,7 @@ function StepEditor({
     }
 
     const target = step.targetPercentFTP ?? step.minPercentFTP ?? 75;
-    onChange({
-      ...step,
+    updateTarget({
       targetMode: "ramp",
       startPercentFTP: step.startPercentFTP ?? Math.max(0, target - 10),
       endPercentFTP: step.endPercentFTP ?? target,
@@ -567,7 +566,7 @@ function StepEditor({
               min={0}
               suffix="%"
               value={step.targetPercentFTP ?? 0}
-              onChange={(value) => onChange({ ...step, targetPercentFTP: value })}
+              onChange={(value) => updateTarget({ targetPercentFTP: value })}
             />
           ) : null}
 
@@ -578,14 +577,14 @@ function StepEditor({
                 min={0}
                 suffix="%"
                 value={step.minPercentFTP ?? 0}
-                onChange={(value) => onChange({ ...step, minPercentFTP: value })}
+                onChange={(value) => updateTarget({ minPercentFTP: value })}
               />
               <NumberField
                 label="High"
                 min={0}
                 suffix="%"
                 value={step.maxPercentFTP ?? 0}
-                onChange={(value) => onChange({ ...step, maxPercentFTP: value })}
+                onChange={(value) => updateTarget({ maxPercentFTP: value })}
               />
             </>
           ) : null}
@@ -597,14 +596,14 @@ function StepEditor({
                 min={0}
                 suffix="%"
                 value={step.startPercentFTP ?? 0}
-                onChange={(value) => onChange({ ...step, startPercentFTP: value })}
+                onChange={(value) => updateTarget({ startPercentFTP: value })}
               />
               <NumberField
                 label="End"
                 min={0}
                 suffix="%"
                 value={step.endPercentFTP ?? 0}
-                onChange={(value) => onChange({ ...step, endPercentFTP: value })}
+                onChange={(value) => updateTarget({ endPercentFTP: value })}
               />
             </>
           ) : null}

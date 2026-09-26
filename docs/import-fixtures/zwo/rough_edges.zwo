@@ -1,0 +1,18 @@
+<workout_file>
+    <author>Wattsmith</author>
+    <name>Rough Edges</name>
+    <description>Legal but awkward content: a zero-length block, a zero repeat, an empty interval set and two workout sections.</description>
+    <sportType>bike</sportType>
+    <workout>
+        <Warmup Duration="300" PowerLow="0.5" PowerHigh="0.7"/>
+        <SteadyState Duration="0" Power="0.9"/>
+        <IntervalsT Repeat="0" OnDuration="30" OffDuration="30" OnPower="1.3" OffPower="0.5"/>
+        <IntervalsT Repeat="3"/>
+        <SteadyState Duration="600" Power="0"/>
+        <SteadyState Duration="60" Power="1.6"/>
+        <Cooldown Duration="300" PowerLow="0.5" PowerHigh="0.4"/>
+    </workout>
+    <workout>
+        <SteadyState Duration="600" Power="0.6"/>
+    </workout>
+</workout_file>

@@ -154,4 +154,10 @@ describe("ERG command policy", () => {
       ]);
     });
   });
+
+  it("marks a workout step with ergEnabled false as a free-ride segment", () => {
+    const freeRide = { ...workout, blocks: workout.blocks.map((b) => (b.id === "b" ? { ...b, ergEnabled: false } : b)) };
+    expect(buildTimeline(freeRide, 200).map((s) => s.ergEnabled)).toEqual([true, false, true]);
+    expect(buildTimeline(workout, 200).map((s) => s.ergEnabled)).toEqual([true, true, true]);
+  });
 });

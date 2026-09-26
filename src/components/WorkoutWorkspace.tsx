@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { ExportPanel } from "@/components/ExportPanel";
+import type { ImportedWorkout } from "@/components/ImportWorkoutButton";
+import { ImportReportPanel, type ImportReport } from "@/components/ImportReportPanel";
 import { apiRequest } from "@/lib/client/api";
 import type { ActivityPrescriptionOrigin } from "@/lib/activity/prescription";
 import { consumeActivityPrescriptionDraft } from "@/lib/activity/prescriptionStorage";
@@ -142,6 +144,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
     workoutFingerprint(cloneDefaultWorkout()),
   );
   const [prescriptionOrigin, setPrescriptionOrigin] = useState<ActivityPrescriptionOrigin | null>(null);
+  const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const statusTimeoutRef = useRef<number | undefined>(undefined);
   const editorPristineRef = useRef(true);
   const activeWorkoutRef = useRef(workoutHistory.present);
@@ -504,11 +507,27 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
     const nextWorkout = createBlankWorkout(profile.ftp);
     replaceActiveWorkout(nextWorkout);
     setPrescriptionOrigin(null);
+    setImportReport(null);
     setLastSavedSnapshot("");
     setSaveState("unsaved");
     setActiveTab("builder");
     flashStatus("Started blank workout");
   };
+
+  const handleImportWorkout = useCallback(
+    ({ workout: imported, warnings, fileName, format }: ImportedWorkout) => {
+      if (!confirmDiscard()) return;
+      editorPristineRef.current = false;
+      replaceActiveWorkout(imported);
+      setPrescriptionOrigin(null);
+      setImportReport({ fileName, format, warnings });
+      setLastSavedSnapshot("");
+      setSaveState("unsaved");
+      setActiveTab("builder");
+      flashStatus(`Imported ${fileName}`);
+    },
+    [confirmDiscard, flashStatus, replaceActiveWorkout],
+  );
 
   const handleDeleteWorkout = async (id: string) => {
     if (workout.id === id && !confirmDiscard()) return;
@@ -521,6 +540,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
         const nextWorkout = nextSavedWorkouts[0] ?? createBlankWorkout(profile.ftp);
         replaceActiveWorkout(nextWorkout);
         setPrescriptionOrigin(null);
+        setImportReport(null);
         setLastSavedSnapshot(nextSavedWorkouts[0] ? workoutFingerprint(nextWorkout) : "");
         setSaveState(nextSavedWorkouts[0] ? "saved" : "unsaved");
       }
@@ -673,6 +693,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
                   const starter = { ...cloneDefaultWorkout(), ftp: profile.ftp };
                   replaceActiveWorkout(starter);
                   setPrescriptionOrigin(null);
+                  setImportReport(null);
                   setLastSavedSnapshot("");
                   setSaveState("unsaved");
                   flashStatus("Reset to starter");
@@ -704,6 +725,9 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
                   </Link>
                 </div>
               </section>
+            ) : null}
+            {importReport ? (
+              <ImportReportPanel report={importReport} unsaved={hasUnsavedChanges} onDismiss={() => setImportReport(null)} />
             ) : null}
             <WorkoutChart
               workout={workout}
@@ -741,6 +765,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
               editorPristineRef.current = false;
               replaceActiveWorkout(nextWorkout);
               setPrescriptionOrigin(null);
+              setImportReport(null);
               const saved = savedWorkouts.some((item) => item.id === nextWorkout.id);
               setLastSavedSnapshot(saved ? workoutFingerprint(nextWorkout) : "");
               setSaveState(saved ? "saved" : "unsaved");
@@ -752,6 +777,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
             onDeleteWorkout={handleDeleteWorkout}
             onToggleFavorite={handleToggleFavorite}
             onCreateNew={handleNewWorkout}
+            onImportWorkout={handleImportWorkout}
           />
         ) : null}
 

@@ -1,0 +1,14 @@
+<workout_file>
+    <author>Wattsmith</author>
+    <name>Ramp Builder</name>
+    <description>Stepwise ramps that climb from endurance to threshold.</description>
+    <sportType>bike</sportType>
+    <workout>
+        <Warmup Duration="300" PowerLow="0.4" PowerHigh="0.6"/>
+        <Ramp Duration="300" PowerLow="0.6" PowerHigh="0.8"/>
+        <Ramp Duration="300" PowerLow="0.8" PowerHigh="1.0"/>
+        <SteadyState Duration="120" Power="1.0"/>
+        <Ramp Duration="180" PowerLow="1.0" PowerHigh="0.55"/>
+        <Cooldown Duration="300" PowerLow="0.55" PowerHigh="0.35"/>
+    </workout>
+</workout_file>

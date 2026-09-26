@@ -169,6 +169,10 @@ function isWorkoutStep(value: unknown): value is WorkoutStep {
     return false;
   }
 
+  if (value.ergEnabled !== undefined && typeof value.ergEnabled !== "boolean") {
+    return false;
+  }
+
   if (
     value.targetMode !== undefined &&
     (typeof value.targetMode !== "string" || !targetModes.includes(value.targetMode as TargetMode))
