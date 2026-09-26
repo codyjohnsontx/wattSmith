@@ -284,6 +284,11 @@ function readBlock(element: XmlElement, index: number, context: ParseContext): D
     );
   }
 
+  if (tag !== "freeride" && tag !== "maxeffort") {
+    context.warnings.push(`${where}: unsupported element, skipped.`);
+    return undefined;
+  }
+
   const attrs = attributesOf(element, context, ["duration"]);
   const durationSeconds = readDuration(attrs.number("duration"), where, context);
   if (durationSeconds === undefined) return undefined;
@@ -291,11 +296,9 @@ function readBlock(element: XmlElement, index: number, context: ParseContext): D
   let label = "Free ride";
   if (tag === "freeride") {
     context.warnings.push(`${where}: free ride block, no ERG target.`);
-  } else if (tag === "maxeffort") {
+  } else {
     label = "Max effort";
     context.warnings.push(`${where}: max effort has no meaning under ERG; imported as a free ride block with no ERG target.`);
-  } else {
-    context.warnings.push(`${where}: unsupported element, imported as a free ride block with no ERG target.`);
   }
   return withCues(freeRide(label, durationSeconds), readBlockCues(element, where, context));
 }

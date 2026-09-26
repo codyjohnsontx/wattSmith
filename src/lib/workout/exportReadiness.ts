@@ -118,6 +118,18 @@ export function buildExportReadinessChecklist({
     ),
   );
   const hasRanges = segments.some((segment) => segment.targetMode === "range");
+  const freeRideCount = segments.filter((segment) => segment.ergEnabled === false).length;
+  const freeRideItems: ExportReadinessItem[] =
+    freeRideCount > 0
+      ? [
+          {
+            id: "free-ride",
+            label: "Free ride blocks",
+            status: "warn",
+            message: `.MRC and .ERG have no free ride; ${freeRideCount} free ride segment(s) will be written as fixed targets.`,
+          },
+        ]
+      : [];
 
   return [
     validationItem,
@@ -182,6 +194,7 @@ export function buildExportReadinessChecklist({
         ? `Range targets will export using the ${rangeStrategy} value.`
         : "No range targets need conversion.",
     },
+    ...freeRideItems,
     hasCourseSections(mrc) && hasCourseSections(erg)
       ? {
           id: "preview",

@@ -72,7 +72,7 @@ export function createRideState({ timeline, ftp, options }: CreateRideStateInput
     recentPower: [],
     segmentStats: {},
     recorder: createRecorder(),
-    erg: { lastSentWatts: null, lastSentAtMs: null },
+    erg: { lastSentWatts: null, lastSentAtMs: null, modeOn: true },
     warnings: [],
     laps: [],
     trainerCommands: [],
@@ -166,12 +166,29 @@ function finish(state: RideState): RideState {
 
 // Drops the trainer to the low pause target instead of 0 W.
 function releaseTrainer(state: RideState): RideState {
-  if (!state.ergEnabled || state.trainerStatus !== "connected") return state;
-  const watts = state.options.pauseTargetWatts;
+  const synced = syncErgMode(state);
+  if (!synced.erg.modeOn || synced.trainerStatus !== "connected") return synced;
+  const watts = synced.options.pauseTargetWatts;
+  return {
+    ...synced,
+    trainerCommands: [...synced.trainerCommands, { type: "setTargetPower", watts }],
+    erg: { ...synced.erg, lastSentWatts: watts, lastSentAtMs: synced.lastTickMs },
+  };
+}
+
+// The trainer is in ERG when the rider wants ERG, except inside a free-ride
+// segment of an active ride.
+function wantsErgMode(state: RideState): boolean {
+  return state.ergEnabled && !(isActive(state) && currentTarget(state)?.segment.ergEnabled === false);
+}
+
+function syncErgMode(state: RideState): RideState {
+  const enabled = wantsErgMode(state);
+  if (enabled === state.erg.modeOn) return state;
   return {
     ...state,
-    trainerCommands: [...state.trainerCommands, { type: "setTargetPower", watts }],
-    erg: { lastSentWatts: watts, lastSentAtMs: state.lastTickMs },
+    trainerCommands: [...state.trainerCommands, { type: "setErgMode", enabled }],
+    erg: { lastSentWatts: null, lastSentAtMs: null, modeOn: enabled },
   };
 }
 
@@ -187,7 +204,7 @@ function resume(state: RideState): RideState {
     status: "riding",
     pauseReason: null,
     zeroCadenceSinceMs: null,
-    erg: { lastSentWatts: null, lastSentAtMs: null },
+    erg: { ...state.erg, lastSentWatts: null, lastSentAtMs: null },
     recorder: advanceRecorder(state.recorder, state.rideMs, snapshot({ ...state, status: "riding" })),
   };
 }
@@ -259,7 +276,7 @@ function handleCommand(state: RideState, command: RideCommand, nowMs: number): R
       ...state,
       status: "riding",
       lastTickMs: nowMs,
-      erg: { lastSentWatts: null, lastSentAtMs: null },
+      erg: { ...state.erg, lastSentWatts: null, lastSentAtMs: null },
     };
     return { ...started, recorder: advanceRecorder(started.recorder, 0, snapshot(started)) };
   }
@@ -315,13 +332,8 @@ function handleBias(state: RideState, percent: number): RideState {
 
 function handleErgMode(state: RideState, enabled: boolean): RideState {
   if (state.status === "finished" || state.ergEnabled === enabled) return state;
-  const next: RideState = {
-    ...state,
-    ergEnabled: enabled,
-    erg: { lastSentWatts: null, lastSentAtMs: null },
-    trainerCommands: [...state.trainerCommands, { type: "setErgMode", enabled }],
-  };
-  return state.status === "paused" ? releaseTrainer(next) : next;
+  const next: RideState = { ...state, ergEnabled: enabled };
+  return state.status === "paused" ? releaseTrainer(next) : syncErgMode(next);
 }
 
 function handleTrainerStatus(state: RideState, status: TrainerStatus): RideState {
@@ -346,11 +358,12 @@ function handleTrainerStatus(state: RideState, status: TrainerStatus): RideState
 }
 
 function applyErgPolicy(state: RideState, nowMs: number): RideState {
-  const { setTargetWatts } = ergCommandPolicy(state, nowMs);
-  if (setTargetWatts === undefined) return state;
+  const synced = syncErgMode(state);
+  const { setTargetWatts } = ergCommandPolicy(synced, nowMs);
+  if (setTargetWatts === undefined) return synced;
   return {
-    ...state,
-    trainerCommands: [...state.trainerCommands, { type: "setTargetPower", watts: setTargetWatts }],
-    erg: { lastSentWatts: setTargetWatts, lastSentAtMs: nowMs },
+    ...synced,
+    trainerCommands: [...synced.trainerCommands, { type: "setTargetPower", watts: setTargetWatts }],
+    erg: { ...synced.erg, lastSentWatts: setTargetWatts, lastSentAtMs: nowMs },
   };
 }

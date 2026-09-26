@@ -176,10 +176,12 @@ describe(".zwo edge cases", () => {
     expect(workout.blocks[0]).toMatchObject({ targetMode: "single", targetPercentFTP: 70 });
   });
 
-  it("imports an unknown timed element as free ride and warns", () => {
+  it("skips an unknown timed element and warns", () => {
     const result = importOk(wrap('<Mystery Duration="120"/><SteadyState Duration="60" Power="0.7"/>'), withXml);
-    expect(result.workout.blocks[0]).toMatchObject({ ergEnabled: false, durationSeconds: 120 });
-    expect(result.warnings[0]).toContain("unsupported element");
+    expect(result.workout.blocks).toHaveLength(1);
+    expect(result.workout.blocks[0]).toMatchObject({ targetPercentFTP: 70, durationSeconds: 60 });
+    expect(result.workout.blocks[0].ergEnabled).toBeUndefined();
+    expect(result.warnings).toContain("<Mystery> block 1: unsupported element, skipped.");
   });
 
   it.each([
