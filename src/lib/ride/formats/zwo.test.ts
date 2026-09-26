@@ -5,7 +5,7 @@ import { flattenWorkout } from "@/lib/workout/flatten";
 import type { Workout } from "@/lib/workout/types";
 import { validateWorkout } from "@/lib/workout/validation";
 import { domXmlParser } from "../importFile";
-import { importError, importFixtureDir, importOk, listFixtures, readFixture } from "./testUtils";
+import { importError, importFixtureDir, importOk, listFixtures, readFixture } from "../importTestUtils";
 
 const zwoDir = `${importFixtureDir}/zwo`;
 const withXml = { parseXml: domXmlParser };

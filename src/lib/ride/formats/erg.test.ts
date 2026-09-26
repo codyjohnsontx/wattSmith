@@ -13,7 +13,7 @@ import {
   importOk,
   listFixtures,
   readFixture,
-} from "./testUtils";
+} from "../importTestUtils";
 
 // Every committed export fixture names the workout and range strategy it was
 // generated from (see scripts/generateExportFixtures.ts).

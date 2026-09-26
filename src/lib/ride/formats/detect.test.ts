@@ -11,7 +11,7 @@ import {
   importOptions,
   listFixtures,
   readFixture,
-} from "./testUtils";
+} from "../importTestUtils";
 import { MAX_IMPORT_CHARS } from "./types";
 
 const withXml = { parseXml: domXmlParser };

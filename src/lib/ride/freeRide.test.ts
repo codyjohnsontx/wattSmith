@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import type { Workout } from "@/lib/workout/types";
-import { importFixtureDir, importOk, readFixture } from "./formats/testUtils";
+import { importFixtureDir, importOk, readFixture } from "./importTestUtils";
 import { domXmlParser } from "./importFile";
 import { createRideHarness } from "./testUtils";
 import type { TrainerEvents } from "./trainer/Trainer";

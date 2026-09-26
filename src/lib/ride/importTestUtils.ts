@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { importWorkoutText } from "./detect";
-import type { ImportOptions, ImportResult } from "./types";
+import { importWorkoutText } from "./formats/detect";
+import type { ImportOptions, ImportResult } from "./formats/types";
 
 export const exportFixtureDir = join(process.cwd(), "docs", "export-fixtures");
 export const importFixtureDir = join(process.cwd(), "docs", "import-fixtures");

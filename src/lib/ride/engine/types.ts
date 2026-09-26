@@ -6,8 +6,7 @@ import type { FlattenedSegment } from "@/lib/workout/types";
 
 export interface RideSegment extends FlattenedSegment {
   index: number;
-  // False for free-ride segments: the engine takes the trainer out of ERG
-  // while inside one and restores ERG on leaving it.
+  // False for free-ride segments: the engine sends no target while inside one.
   ergEnabled: boolean;
   // True for segments the rider added mid-ride with "extend".
   synthetic?: boolean;
@@ -128,8 +127,6 @@ export interface RecorderState {
 export interface ErgState {
   lastSentWatts: number | null;
   lastSentAtMs: number | null;
-  // The ERG mode last commanded to the trainer.
-  modeOn: boolean;
 }
 
 export interface RideState {
@@ -139,7 +136,11 @@ export interface RideState {
   timeline: RideSegment[];
   ftp: number;
   ftpBiasPercent: number;
+  // The rider's ERG preference for the whole ride.
   ergEnabled: boolean;
+  // The mode last commanded to the trainer: off inside free-ride segments even
+  // when the rider's preference is on. Assumed on until first commanded.
+  trainerErgMode: boolean;
   trainerStatus: TrainerStatus;
   pauseReason: PauseReason | null;
   // Workout position; advances only while riding.
