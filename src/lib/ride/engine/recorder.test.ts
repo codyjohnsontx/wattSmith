@@ -109,14 +109,65 @@ describe("ride recording through the reducer", () => {
     expect(state.status).toBe("finished");
     const rows = state.recorder.rows;
     expect(rows.map((r) => r.t)).toEqual(Array.from({ length: 25 }, (_, i) => i));
-    // A row describes the ride at the start of its second: the pause at 3.0 s
-    // lands after the tick that opened second 3.
-    expect(rows.map((r) => r.paused).lastIndexOf(false, 3)).toBe(3);
-    expect(rows.slice(4, 9).every((r) => r.paused)).toBe(true);
-    expect(rows[9].paused).toBe(false);
+    // The pause at 3.0 s and the resume at 8.0 s land on row starts.
+    expect(rows.map((r) => r.paused)).toEqual(Array.from({ length: 25 }, (_, i) => i >= 3 && i < 8));
     expect(rows[15].targetWatts).toBe(200);
     expect(rows[15].segmentIndex).toBe(1);
     expect(rows.every((r) => r.power !== null)).toBe(true);
+  });
+
+  // Ticks every 250 ms up to `toMs`, with `extra` events after the tick at their time.
+  function script(toMs: number, extra: RideEvent[]): RideEvent[] {
+    const events: RideEvent[] = [];
+    for (let t = 250; t <= toMs; t += 250) {
+      events.push({ type: "tick", nowMs: t }, ...extra.filter((e) => e.nowMs === t));
+    }
+    return events;
+  }
+  const at = (nowMs: number, command: "pause" | "stop" | "skip" | "back"): RideEvent => ({
+    type: "command",
+    nowMs,
+    command,
+  });
+
+  it("records a pause on a second boundary in that second: pause then stop", () => {
+    const state = ride(script(8_000, [at(3_000, "pause"), at(8_000, "stop")]));
+    const streams = toActivityStreams(state.recorder.rows);
+    expect(streams.time).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(streams.moving).toEqual([true, true, true, false, false, false, false, false]);
+  });
+
+  it("records a pause inside a second from the next row", () => {
+    const state = ride(script(5_000, [at(2_500, "pause")]));
+    expect(state.recorder.rows.map((r) => r.paused)).toEqual([false, false, false, true, true]);
+  });
+
+  it("records a skip on a second boundary in that second", () => {
+    const state = ride(script(5_000, [at(3_000, "skip")]));
+    expect(state.recorder.rows.map((r) => [r.segmentIndex, r.targetWatts])).toEqual([
+      [0, 100],
+      [0, 100],
+      [0, 100],
+      [1, 200],
+      [1, 200],
+    ]);
+  });
+
+  it("records a back on a second boundary in that second", () => {
+    const state = ride(script(15_000, [at(12_000, "back")]));
+    // 'back' at 12 s is 2 s into segment B, so it returns to segment A at 0 s.
+    expect(state.recorder.rows.slice(10, 15).map((r) => [r.segmentIndex, r.targetWatts])).toEqual([
+      [1, 200],
+      [1, 200],
+      [0, 100],
+      [0, 100],
+      [0, 100],
+    ]);
+  });
+
+  it("records an FTP bias change on a second boundary in that second", () => {
+    const state = ride(script(4_000, [{ type: "ftpBias", nowMs: 2_000, percent: 110 }]));
+    expect(state.recorder.rows.map((r) => r.targetWatts)).toEqual([100, 100, 110, 110]);
   });
 
   it("tracks 3 s and 10 s power and planned vs actual per segment", () => {

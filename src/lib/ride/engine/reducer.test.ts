@@ -281,7 +281,8 @@ describe("skip, back and extend", () => {
       [1, 133],
       [4, 300],
     ]);
-    expect(state.recorder.rows.slice(1, 4).map((row) => row.segmentIndex)).toEqual([4, 4, 1]);
+    // Row 2 starts at the 'back', so it already belongs to the Ramp.
+    expect(state.recorder.rows.slice(1, 4).map((row) => row.segmentIndex)).toEqual([4, 1, 1]);
     expect(state.laps.map((lap) => [lap.reason, lap.fromElapsedMs, lap.toElapsedMs])).toEqual([
       ["skip", 0, 60_000],
       ["skip", 60_000, 180_000],

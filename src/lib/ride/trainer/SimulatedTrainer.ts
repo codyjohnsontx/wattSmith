@@ -188,8 +188,14 @@ export class SimulatedTrainer implements Trainer {
     return this.emitter.on(event, listener);
   }
 
+  // Idempotent: connecting while connected does nothing, and connecting during
+  // an automatic reconnect takes over from it instead of racing it.
   async connect(): Promise<void> {
     if (this.currentStatus === "connected") return;
+    if (this.reconnectTimer !== null) {
+      this.clock.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.setStatus("connecting");
     this.connectedAtMs = this.clock.now();
     this.setStatus("connected");
@@ -277,7 +283,9 @@ export class SimulatedTrainer implements Trainer {
     this.reconnectTimer = null;
   }
 
+  // At most one sample loop runs at a time.
   private scheduleSample(): void {
+    if (this.sampleTimer !== null) return;
     this.sampleTimer = this.clock.setTimeout(() => this.step(), this.options.sampleIntervalMs);
   }
 

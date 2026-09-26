@@ -136,7 +136,11 @@ export interface RideState {
   timeline: RideSegment[];
   ftp: number;
   ftpBiasPercent: number;
+  // The rider's ERG preference for the whole ride.
   ergEnabled: boolean;
+  // The mode last commanded to the trainer: off inside free-ride segments even
+  // when the rider's preference is on. Assumed on until first commanded.
+  trainerErgMode: boolean;
   trainerStatus: TrainerStatus;
   pauseReason: PauseReason | null;
   // Workout position; advances only while riding.

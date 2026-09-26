@@ -72,11 +72,68 @@ describe("SimulatedTrainer model", () => {
     expect(samples.at(-1)!.heartRate!).toBeGreaterThan(175);
   });
 
+  it("keeps one sample loop when connect() is called during an automatic reconnect", async () => {
+    const clock = new ManualClock();
+    const trainer = new SimulatedTrainer(clock);
+    const times: number[] = [];
+    trainer.on("sample", (sample) => times.push(sample.timestampMs));
+    trainer.dropConnectionAt(1, 5_000);
+    await trainer.connect();
+    clock.advance(1_000);
+    expect(trainer.status).toBe("reconnecting");
+
+    clock.advance(1_000);
+    await trainer.connect();
+    await trainer.connect();
+    clock.advance(10_000);
+
+    expect(trainer.status).toBe("connected");
+    expect(times).toEqual([3_000, 4_000, 5_000, 6_000, 7_000, 8_000, 9_000, 10_000, 11_000, 12_000]);
+  });
+
   it("clamps targets to the reported power range", () => {
     expect(clampToPowerRange(1234, { minWatts: 0, maxWatts: 1000, incrementWatts: 1 })).toBe(1000);
     expect(clampToPowerRange(-5, { minWatts: 0, maxWatts: 1000, incrementWatts: 1 })).toBe(0);
     expect(clampToPowerRange(203, { minWatts: 0, maxWatts: 1000, incrementWatts: 5 })).toBe(205);
     expect(clampToPowerRange(203.4, null)).toBe(203);
+  });
+});
+
+describe("SimulatedTrainer driven by the engine", () => {
+  it("rides a free-ride segment on cadence, then returns to the ERG target", async () => {
+    // At FTP 200: 10 s at 100 W, 60 s free ride, 60 s at 200 W.
+    const freeRideWorkout: Workout = {
+      ...workout,
+      blocks: [
+        { id: "a", type: "steady", label: "A", targetMode: "single", durationSeconds: 10, targetPercentFTP: 50 },
+        { id: "f", type: "steady", label: "Free", targetMode: "single", durationSeconds: 60, targetPercentFTP: 50 },
+        { id: "c", type: "steady", label: "C", targetMode: "single", durationSeconds: 60, targetPercentFTP: 100 },
+      ],
+    };
+    const harness = createRideHarness({
+      workout: freeRideWorkout,
+      ftp: 200,
+      mapTimeline: (timeline) => timeline.map((s) => (s.index === 1 ? { ...s, ergEnabled: false } : s)),
+      trainerOptions: { powerNoise: 0, freeRideWatts: 150 },
+    });
+    const powers: number[] = [];
+    harness.trainer.on("sample", (sample) => powers.push(sample.power!));
+    await harness.start();
+
+    harness.advance(9_000);
+    expect(Math.abs(powers.at(-1)! - 100)).toBeLessThanOrEqual(5);
+
+    // Deep in free ride the trainer follows cadence (~150 W), not the old 100 W.
+    harness.advance(60_000);
+    const freeRidePower = powers.at(-1)!;
+    expect(Math.abs(freeRidePower - 150)).toBeLessThan(15);
+    expect(harness.state.recorder.rows.at(-1)?.targetWatts).toBeNull();
+
+    // Back in an ERG segment the trainer holds the new target.
+    harness.advance(20_000);
+    await flushPromises();
+    expect(harness.trainer.targetWatts).toBe(200);
+    expect(Math.abs(powers.at(-1)! - 200)).toBeLessThanOrEqual(3);
   });
 });
 

@@ -63,6 +63,7 @@ export function createRideState({ timeline, ftp, options }: CreateRideStateInput
     ftp,
     ftpBiasPercent: 100,
     ergEnabled: true,
+    trainerErgMode: true,
     trainerStatus: "disconnected",
     pauseReason: null,
     elapsedMs: 0,
@@ -107,7 +108,7 @@ export function reduce(state: RideState, event: RideEvent): RideState {
   }
 
   next = checkAutoPause(next, event.nowMs);
-  return applyErgPolicy(next, event.nowMs);
+  return refreshOpenRow(applyErgPolicy(next, event.nowMs));
 }
 
 export function currentTarget(state: RideState) {
@@ -120,8 +121,9 @@ function isActive(state: RideState): boolean {
 
 function snapshot(state: RideState): RecorderSnapshot {
   const target = currentTarget(state);
+  // Free-ride segments have no target, so none is recorded.
   return {
-    targetWatts: target?.watts ?? null,
+    targetWatts: target?.segment.ergEnabled ? target.watts : null,
     segmentIndex: target?.segment.index ?? null,
     ergEnabled: state.ergEnabled && (target?.segment.ergEnabled ?? false),
     paused: state.status === "paused",
@@ -164,13 +166,36 @@ function finish(state: RideState): RideState {
   return releaseTrainer({ ...state, status: "finished", pauseReason: null, recorder });
 }
 
-// Drops the trainer to the low pause target instead of 0 W.
+// A row describes the ride at the start of its second. An event that lands
+// exactly on that start (a pause, skip, back, bias or ERG change) belongs to
+// the row; an event later in the second shows from the next row.
+function refreshOpenRow(state: RideState): RideState {
+  const bucket = state.recorder.bucket;
+  if (!isActive(state) || !bucket || bucket.second * 1000 !== state.rideMs) return state;
+  return { ...state, recorder: { ...state.recorder, bucket: { ...bucket, snapshot: snapshot(state) } } };
+}
+
+// Commands the trainer's ERG mode when it differs from what was last sent.
+// Turning ERG on clears the last target so the current one follows at once.
+function setTrainerErgMode(state: RideState, enabled: boolean): RideState {
+  if (state.trainerErgMode === enabled || state.trainerStatus !== "connected") return state;
+  return {
+    ...state,
+    trainerErgMode: enabled,
+    trainerCommands: [...state.trainerCommands, { type: "setErgMode", enabled }],
+    erg: enabled ? { lastSentWatts: null, lastSentAtMs: null } : state.erg,
+  };
+}
+
+// Drops the trainer to the low pause target instead of 0 W, re-entering ERG
+// first if a free-ride segment had turned it off.
 function releaseTrainer(state: RideState): RideState {
   if (!state.ergEnabled || state.trainerStatus !== "connected") return state;
   const watts = state.options.pauseTargetWatts;
+  const inErg = setTrainerErgMode(state, true);
   return {
-    ...state,
-    trainerCommands: [...state.trainerCommands, { type: "setTargetPower", watts }],
+    ...inErg,
+    trainerCommands: [...inErg.trainerCommands, { type: "setTargetPower", watts }],
     erg: { lastSentWatts: watts, lastSentAtMs: state.lastTickMs },
   };
 }
@@ -200,7 +225,7 @@ function handleSample(state: RideState, sample: TrainerSample, nowMs: number): R
   if (sample.power !== undefined) {
     next.recentPower = pushPower(next.recentPower, { atRideMs: next.rideMs, watts: sample.power });
     const target = currentTarget(next);
-    if (next.status === "riding" && target) {
+    if (next.status === "riding" && target?.segment.ergEnabled) {
       next.segmentStats = addSegmentSample(next.segmentStats, target.segment.index, sample.power, target.watts);
     }
   }
@@ -313,15 +338,13 @@ function handleBias(state: RideState, percent: number): RideState {
   return { ...state, ftpBiasPercent: Math.min(maxBiasPercent, Math.max(minBiasPercent, Math.round(percent))) };
 }
 
+// While riding, applyErgPolicy moves the trainer to the new mode.
 function handleErgMode(state: RideState, enabled: boolean): RideState {
   if (state.status === "finished" || state.ergEnabled === enabled) return state;
-  const next: RideState = {
-    ...state,
-    ergEnabled: enabled,
-    erg: { lastSentWatts: null, lastSentAtMs: null },
-    trainerCommands: [...state.trainerCommands, { type: "setErgMode", enabled }],
-  };
-  return state.status === "paused" ? releaseTrainer(next) : next;
+  const next: RideState = { ...state, ergEnabled: enabled, erg: { lastSentWatts: null, lastSentAtMs: null } };
+  if (next.status === "riding") return next;
+  if (next.status === "paused" && enabled) return releaseTrainer(next);
+  return setTrainerErgMode(next, enabled);
 }
 
 function handleTrainerStatus(state: RideState, status: TrainerStatus): RideState {
@@ -345,12 +368,18 @@ function handleTrainerStatus(state: RideState, status: TrainerStatus): RideState
   }
 }
 
+// While riding, the trainer is in ERG only when the rider wants ERG and the
+// current segment is not free ride; then targets follow the write policy.
 function applyErgPolicy(state: RideState, nowMs: number): RideState {
-  const { setTargetWatts } = ergCommandPolicy(state, nowMs);
-  if (setTargetWatts === undefined) return state;
+  let next = state;
+  if (next.status === "riding") {
+    next = setTrainerErgMode(next, next.ergEnabled && (currentTarget(next)?.segment.ergEnabled ?? true));
+  }
+  const { setTargetWatts } = ergCommandPolicy(next, nowMs);
+  if (setTargetWatts === undefined) return next;
   return {
-    ...state,
-    trainerCommands: [...state.trainerCommands, { type: "setTargetPower", watts: setTargetWatts }],
+    ...next,
+    trainerCommands: [...next.trainerCommands, { type: "setTargetPower", watts: setTargetWatts }],
     erg: { lastSentWatts: setTargetWatts, lastSentAtMs: nowMs },
   };
 }

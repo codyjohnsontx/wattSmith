@@ -1,7 +1,7 @@
 import type { Workout } from "@/lib/workout/types";
 import { buildTimeline } from "./engine/timeline";
 import { createRideState, reduce } from "./engine/reducer";
-import type { EngineOptions, RideEvent, RideState } from "./engine/types";
+import type { EngineOptions, RideEvent, RideSegment, RideState } from "./engine/types";
 import type { TargetPowerResult } from "./trainer/Trainer";
 import { ManualClock, SimulatedTrainer } from "./trainer/SimulatedTrainer";
 import type { SimulatedTrainerOptions } from "./trainer/SimulatedTrainer";
@@ -18,12 +18,15 @@ export interface TargetWrite {
 export function createRideHarness({
   workout,
   ftp,
+  mapTimeline = (timeline) => timeline,
   engineOptions,
   trainerOptions,
   tickMs = 250,
 }: {
   workout: Workout;
   ftp: number;
+  // Adjusts the built timeline, e.g. to mark free-ride segments.
+  mapTimeline?: (timeline: RideSegment[]) => RideSegment[];
   engineOptions?: Partial<EngineOptions>;
   trainerOptions?: Partial<SimulatedTrainerOptions>;
   tickMs?: number;
@@ -31,7 +34,7 @@ export function createRideHarness({
   const clock = new ManualClock();
   const trainer = new SimulatedTrainer(clock, { riderFtp: ftp, ...trainerOptions });
   const writes: TargetWrite[] = [];
-  let state: RideState = createRideState({ timeline: buildTimeline(workout, ftp), ftp, options: engineOptions });
+  let state: RideState = createRideState({ timeline: mapTimeline(buildTimeline(workout, ftp)), ftp, options: engineOptions });
 
   const dispatch = (event: RideEvent) => {
     state = reduce(state, event);

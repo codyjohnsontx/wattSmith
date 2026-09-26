@@ -92,18 +92,66 @@ describe("ERG command policy", () => {
     expect(writes.find((w) => w.watts === 200)?.atMs).toBe(58_000);
   });
 
-  it("sends nothing inside a free-ride segment", () => {
-    const timeline = buildTimeline(workout, 200).map((s) => (s.index === 1 ? { ...s, ergEnabled: false } : s));
-    let state = createRideState({ timeline, ftp: 200 });
-    state = reduce(state, { type: "trainerStatus", nowMs: 0, status: "connected" });
-    state = reduce(state, { type: "command", nowMs: 0, command: "skip" });
-    state = reduce(state, { type: "command", nowMs: 0, command: "start" });
-    state = reduce(state, { type: "command", nowMs: 0, command: "skip" });
-    const commands = [];
-    for (let t = 250; t <= 30_000; t += 250) {
-      state = reduce(state, { type: "tick", nowMs: t });
-      commands.push(...state.trainerCommands);
-    }
-    expect(commands).toEqual([]);
+  describe("free-ride segments", () => {
+    const freeRide = () => {
+      const timeline = buildTimeline(workout, 200).map((s) => (s.index === 1 ? { ...s, ergEnabled: false } : s));
+      let state = createRideState({ timeline, ftp: 200 });
+      state = reduce(state, { type: "trainerStatus", nowMs: 0, status: "connected" });
+      return reduce(state, { type: "command", nowMs: 0, command: "start" });
+    };
+    const commandsOver = (from: RideState, fromMs: number, toMs: number) => {
+      let state = from;
+      const commands = [];
+      for (let t = fromMs + 250; t <= toMs; t += 250) {
+        state = reduce(state, { type: "tick", nowMs: t });
+        commands.push(...state.trainerCommands);
+      }
+      return { state, commands };
+    };
+
+    it("turns trainer ERG off entering one and back on, with the target, leaving it", () => {
+      let state = freeRide();
+      expect(state.trainerCommands).toEqual([{ type: "setTargetPower", watts: 100 }]);
+
+      state = reduce(state, { type: "command", nowMs: 0, command: "skip" });
+      expect(state.trainerCommands).toEqual([{ type: "setErgMode", enabled: false }]);
+      expect(state.trainerErgMode).toBe(false);
+      expect(state.ergEnabled).toBe(true);
+
+      const inside = commandsOver(state, 0, 30_000);
+      expect(inside.commands).toEqual([]);
+
+      state = reduce(inside.state, { type: "command", nowMs: 30_000, command: "skip" });
+      expect(state.trainerCommands).toEqual([
+        { type: "setErgMode", enabled: true },
+        { type: "setTargetPower", watts: 160 },
+      ]);
+    });
+
+    it("switches modes at a free-ride boundary reached by riding", () => {
+      const { commands } = commandsOver(freeRide(), 0, 61_000);
+      expect(commands.filter((c) => c.type === "setErgMode")).toEqual([{ type: "setErgMode", enabled: false }]);
+    });
+
+    it("re-enters ERG for the pause target and leaves it again on resume", () => {
+      let state = reduce(freeRide(), { type: "command", nowMs: 0, command: "skip" });
+      state = reduce(state, { type: "command", nowMs: 0, command: "pause" });
+      expect(state.trainerCommands).toEqual([
+        { type: "setErgMode", enabled: true },
+        { type: "setTargetPower", watts: 50 },
+      ]);
+      state = reduce(state, { type: "command", nowMs: 1_000, command: "resume" });
+      expect(state.trainerCommands).toEqual([{ type: "setErgMode", enabled: false }]);
+    });
+
+    it("records no target inside one", () => {
+      const state = reduce(freeRide(), { type: "command", nowMs: 0, command: "skip" });
+      const { state: after } = commandsOver(state, 0, 3_000);
+      expect(after.recorder.rows.map((r) => [r.targetWatts, r.ergEnabled])).toEqual([
+        [null, false],
+        [null, false],
+        [null, false],
+      ]);
+    });
   });
 });
