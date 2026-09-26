@@ -210,10 +210,23 @@ describe(".zwo edge cases", () => {
 
   it("drops the off part of an IntervalsT whose off power is unreadable", () => {
     const result = importOk(
-      wrap('<IntervalsT Repeat="3" OnDuration="60" OffDuration="60" OnPower="1.1" OffPowr="0.5"><textevent timeoffset="90" message="Spin"/></IntervalsT>'),
+      wrap(
+        '<IntervalsT Repeat="3" OnDuration="60" OffDuration="60" OnPower="1.1" OffPowr="0.5">' +
+          '<textevent timeoffset="10" message="Go"/><textevent timeoffset="90" message="Spin"/><textevent timeoffset="150" message="Again"/>' +
+          "</IntervalsT>",
+      ),
       withXml,
     );
     const [repeat] = result.workout.blocks;
+    expect(repeat.cues ?? []).toEqual([]);
+    expect(repeat.children![0].cues).toMatchObject([{ atSeconds: 10, text: "Go" }]);
+    expect(collectWorkoutCues(result.workout).map((cue) => [cue.atSeconds, cue.text])).toEqual([
+      [10, "Go"],
+      [70, "Go"],
+      [130, "Go"],
+    ]);
+    expect(result.warnings).toContain("<IntervalsT> block 1 text event at 90 s was timed against the dropped off part; skipped.");
+    expect(result.warnings).toContain("<IntervalsT> block 1 text event at 150 s was timed against the dropped off part; skipped.");
     expect(repeat).toMatchObject({ type: "repeat", repeatCount: 3 });
     expect(repeat.children).toHaveLength(1);
     expect(repeat.children![0]).toMatchObject({ label: "On", durationSeconds: 60, targetPercentFTP: 110 });

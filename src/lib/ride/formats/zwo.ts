@@ -217,8 +217,9 @@ function readIntervals(element: XmlElement, where: string, context: ParseContext
   const on: DraftStep = { type: "steady", label: "On", durationSeconds: onSeconds, ...onTarget };
 
   const offRaw = attrs.number("offduration");
-  let offSeconds = offRaw === undefined ? 0 : Math.round(offRaw);
+  const offSeconds = offRaw === undefined ? 0 : Math.round(offRaw);
   const children = [on];
+  let offDropped = false;
   if (offSeconds > 0) {
     const offTarget = readTarget(
       attrs,
@@ -231,7 +232,7 @@ function readIntervals(element: XmlElement, where: string, context: ParseContext
       children.push({ type: "recovery", label: "Off", durationSeconds: offSeconds, ...offTarget });
     } else {
       context.warnings.push(`${where} (off) has no power target; the off part was dropped.`);
-      offSeconds = 0;
+      offDropped = true;
     }
   }
 
@@ -241,6 +242,8 @@ function readIntervals(element: XmlElement, where: string, context: ParseContext
   for (const cue of readBlockCues(element, where, context)) {
     if (cue.atSeconds < onSeconds) {
       children[0].cues = [...(children[0].cues ?? []), cue];
+    } else if (offDropped) {
+      context.warnings.push(`${where} text event at ${cue.atSeconds} s was timed against the dropped off part; skipped.`);
     } else if (children[1] && cue.atSeconds < onSeconds + offSeconds) {
       children[1].cues = [...(children[1].cues ?? []), { ...cue, atSeconds: cue.atSeconds - onSeconds }];
     } else {
