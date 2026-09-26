@@ -16,9 +16,9 @@ header keys, mixed case, a byte order mark).
 | `zwo/ramp_test.zwo` | Ramp blocks up and down |
 | `zwo/group_ride_freeride.zwo` | FreeRide, Freeride, MaxEffort (no ERG target) |
 | `zwo/over_unders.zwo` | IntervalsT with ramped on and off power |
-| `zwo/hand_edited.zwo` | BOM, XML declaration, comments, bare `&`, case variants, fractional duration |
+| `zwo/hand_edited.zwo` | BOM, XML declaration, comments, bare `&`, case variants, fractional duration, SolidState |
 | `zwo/zone_intervals.zwo` | Zone numbers instead of power, `ftpOverride` |
-| `zwo/tempo_range.zwo` | SteadyState power ranges, SolidState |
+| `zwo/tempo_range.zwo` | SteadyState power ranges |
 | `zwo/reverse_ramps.zwo` | Warmup going down, cooldown going up, workout-level text events |
 | `zwo/rough_edges.zwo` | Zero-length block, zero repeat, empty IntervalsT, two `<workout>` sections |
 | `course/threshold_3x10.mrc` | CRLF, `;` comments, space and tab columns, `%` suffix |
