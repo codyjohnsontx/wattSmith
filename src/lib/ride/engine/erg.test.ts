@@ -124,6 +124,35 @@ describe("ERG command policy", () => {
     ]);
   });
 
+  it("holds the pause target when a paused ride moves between free-ride and ERG segments", () => {
+    const timeline = buildTimeline(workout, 200).map((s) => (s.index === 1 ? { ...s, ergEnabled: false } : s));
+    let state = createRideState({ timeline, ftp: 200 });
+    state = reduce(state, { type: "trainerStatus", nowMs: 0, status: "connected" });
+    state = reduce(state, { type: "command", nowMs: 0, command: "start" });
+    state = reduce(state, { type: "command", nowMs: 0, command: "skip" });
+    state = reduce(state, { type: "command", nowMs: 1_000, command: "pause" });
+    expect(state.trainerCommands).toEqual([]);
+
+    state = reduce(state, { type: "command", nowMs: 5_000, command: "back" });
+    expect(state.trainerCommands).toEqual([
+      { type: "setErgMode", enabled: true },
+      { type: "setTargetPower", watts: 50 },
+    ]);
+
+    state = reduce(state, { type: "command", nowMs: 6_000, command: "skip" });
+    expect(state.trainerCommands).toEqual([{ type: "setErgMode", enabled: false }]);
+
+    state = reduce(state, { type: "command", nowMs: 7_000, command: "skip" });
+    expect(state.status).toBe("paused");
+    expect(state.trainerCommands).toEqual([
+      { type: "setErgMode", enabled: true },
+      { type: "setTargetPower", watts: 50 },
+    ]);
+
+    state = reduce(state, { type: "command", nowMs: 8_000, command: "resume" });
+    expect(state.trainerCommands).toEqual([{ type: "setTargetPower", watts: 160 }]);
+  });
+
   it("releases ERG at the start when the first segment is a free ride", () => {
     const timeline = buildTimeline(workout, 200).map((s) => (s.index === 0 ? { ...s, ergEnabled: false } : s));
     let state = createRideState({ timeline, ftp: 200 });

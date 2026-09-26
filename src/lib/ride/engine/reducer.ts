@@ -261,7 +261,7 @@ function jumpTo(state: RideState, toElapsedMs: number, reason: RideLap["reason"]
   if (toElapsedMs >= timelineDurationMs(next.timeline)) {
     return finish({ ...next, elapsedMs: timelineDurationMs(next.timeline) });
   }
-  return next;
+  return next.status === "paused" ? releaseTrainer(next) : next;
 }
 
 function handleCommand(state: RideState, command: RideCommand, nowMs: number): RideState {
