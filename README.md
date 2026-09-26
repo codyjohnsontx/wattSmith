@@ -46,3 +46,11 @@ npm run build
 The optional public-demo browser smoke flow runs with `npm run test:e2e` and writes desktop/mobile screenshots under `output/playwright/`.
 
 See the [product roadmap](docs/roadmap.md), [testing debt](docs/testing-tech-debt.md), and [export verification notes](docs/export-testing.md). A production demo URL can replace the local `/demo` link once deployment is configured; deployment automation is intentionally out of scope.
+
+## Contributing
+
+Issues and pull requests are welcome. Please run the validation commands above before opening a pull request, and keep changes focused on a single concern.
+
+## License
+
+Wattsmith is released under the [MIT License](LICENSE).
