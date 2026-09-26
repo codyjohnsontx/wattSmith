@@ -287,27 +287,21 @@ function handleCommand(state: RideState, command: RideCommand, nowMs: number): R
       return jumpTo(state, toSegment.startSeconds * 1000, "back");
     }
     case "extend": {
+      // Known approximation: after back-then-extend within one segment, samples
+      // from the earlier pass past the split point stay attributed to the head
+      // piece in per-segment stats and row segmentIndex.
       const timeline = extendTimeline(state.timeline, state.elapsedMs, state.options.extendMs);
       const inserted = timeline.length - state.timeline.length;
       if (inserted === 0) return state;
       const shift = (ms: number) => (ms > state.elapsedMs ? ms + state.options.extendMs : ms);
       const firstMoved = state.elapsedMs / 1000 > segment.startSeconds ? index + 1 : index;
       const remap = (i: number) => (i < firstMoved ? i : i + inserted);
-      const lap: RideLap = {
-        reason: "extend",
-        atRideMs: state.rideMs,
-        fromElapsedMs: state.elapsedMs,
-        toElapsedMs: state.elapsedMs,
-      };
       return {
         ...state,
         timeline,
         segmentStats: remapSegmentStats(state.segmentStats, remap),
         recorder: remapSegmentIndexes(state.recorder, remap),
-        laps: [
-          ...state.laps.map((l) => ({ ...l, fromElapsedMs: shift(l.fromElapsedMs), toElapsedMs: shift(l.toElapsedMs) })),
-          lap,
-        ],
+        laps: state.laps.map((l) => ({ ...l, fromElapsedMs: shift(l.fromElapsedMs), toElapsedMs: shift(l.toElapsedMs) })),
       };
     }
   }

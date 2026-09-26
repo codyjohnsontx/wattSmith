@@ -79,7 +79,7 @@ export interface RideWarning {
 }
 
 export interface RideLap {
-  reason: "skip" | "back" | "extend";
+  reason: "skip" | "back";
   atRideMs: number;
   fromElapsedMs: number;
   toElapsedMs: number;
