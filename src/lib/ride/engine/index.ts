@@ -1,0 +1,10 @@
+export * from "./types";
+export { buildTimeline, extendTimeline, findSegmentIndex, segmentWattsAt, timelineDurationMs } from "./timeline";
+export { applyBias, targetAt } from "./targets";
+export type { RideTarget } from "./targets";
+export { ergCommandPolicy } from "./erg";
+export { displayPower, rollingPower, segmentComparisons } from "./metrics";
+export type { SegmentComparison } from "./metrics";
+export { advanceRecorder, appendSample, createRecorder, finalizeRecorder, toActivityStreams } from "./recorder";
+export { createRideState, currentTarget, defaultEngineOptions, reduce } from "./reducer";
+export type { CreateRideStateInput } from "./reducer";
