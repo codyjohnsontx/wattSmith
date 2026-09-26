@@ -155,6 +155,28 @@ describe("WorkoutWorkspace save reliability", () => {
     expect(screen.queryByRole("region", { name: "Import report" })).not.toBeInTheDocument();
   });
 
+  it("drops the unsaved draft notice from the import report once the draft is saved", async () => {
+    const user = userEvent.setup();
+    (apiRequest as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/profile") return Promise.resolve(defaultProfile);
+      if (url === "/api/workouts" && !init) return Promise.resolve([serverWorkout]);
+      if (url === "/api/workouts" && init?.method === "POST") return Promise.resolve(JSON.parse(String(init.body)));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    render(<WorkoutWorkspace initialTab="library" />);
+    await user.click(await screen.findByRole("button", { name: "Import fixture" }));
+    const report = screen.getByRole("region", { name: "Import report" });
+    expect(report).toHaveTextContent("This is an unsaved draft.");
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    expect(report).not.toHaveTextContent("This is an unsaved draft.");
+    expect(report).toHaveTextContent("Free ride block: no ERG target.");
+
+    await user.click(screen.getByRole("button", { name: "Edit draft" }));
+    expect(report).toHaveTextContent("This is an unsaved draft.");
+  });
+
   it("keeps the current draft when discarding it for an import is rejected", async () => {
     const user = userEvent.setup();
     vi.spyOn(window, "confirm").mockReturnValue(false);

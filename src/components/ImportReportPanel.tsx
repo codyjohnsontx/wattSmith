@@ -6,7 +6,7 @@ export interface ImportReport {
   warnings: string[];
 }
 
-export function ImportReportPanel({ report, onDismiss }: { report: ImportReport; onDismiss: () => void }) {
+export function ImportReportPanel({ report, unsaved, onDismiss }: { report: ImportReport; unsaved: boolean; onDismiss: () => void }) {
   const count = report.warnings.length;
 
   return (
@@ -21,7 +21,9 @@ export function ImportReportPanel({ report, onDismiss }: { report: ImportReport;
             {" · "}
             {count === 0 ? "No warnings" : `${count} ${count === 1 ? "warning" : "warnings"}`}
           </p>
-          <p className="mt-1 text-xs text-slate-500">This is an unsaved draft. Check it, then press Save to add it to your library.</p>
+          {unsaved ? (
+            <p className="mt-1 text-xs text-slate-500">This is an unsaved draft. Check it, then press Save to add it to your library.</p>
+          ) : null}
         </div>
         <button
           type="button"

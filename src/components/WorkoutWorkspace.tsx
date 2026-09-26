@@ -727,7 +727,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
               </section>
             ) : null}
             {importReport ? (
-              <ImportReportPanel report={importReport} onDismiss={() => setImportReport(null)} />
+              <ImportReportPanel report={importReport} unsaved={hasUnsavedChanges} onDismiss={() => setImportReport(null)} />
             ) : null}
             <WorkoutChart
               workout={workout}
