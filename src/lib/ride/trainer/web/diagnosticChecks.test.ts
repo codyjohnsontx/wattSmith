@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateChecks, judgeTargetTest, newTargetTest, trackTargetPower } from "./diagnosticChecks";
+import { addRecentSample, evaluateChecks, judgeTargetTest, newTargetTest, trackTargetPower } from "./diagnosticChecks";
 import type { DiagnosticSnapshot, TargetTest } from "./diagnosticChecks";
 import type { TrainerDiagnostics } from "./WebBluetoothTrainer";
 
@@ -27,8 +27,8 @@ const base: DiagnosticSnapshot = {
   trainerStatus: "connected",
   deviceName: "KICKR CORE 1234",
   diagnostics,
-  indoorBikeData: { atMs: 99_500, powerWatts: 152, cadenceRpm: 88, recentCount: 5 },
-  cyclingPower: { atMs: 99_600, powerWatts: 150, cadenceRpm: 88, recentCount: 5 },
+  indoorBikeData: { atMs: 99_500, powerWatts: 152, cadenceRpm: 88, recentCount: 5, averagePowerWatts: 152 },
+  cyclingPower: { atMs: 99_600, powerWatts: 150, cadenceRpm: 88, recentCount: 5, averagePowerWatts: 150 },
   heartRate: null,
   targetTests: [],
   gaveUp: false,
@@ -78,7 +78,7 @@ describe("evaluateChecks", () => {
     };
     const states = Object.fromEntries(evaluateChecks(snapshot).map((c) => [c.step, c.state]));
     expect(states).toEqual({ 1: "pass", 2: "pass", 3: "pass", 4: "pass", 5: "pass", 6: "manual", 7: "manual", 8: "manual", 9: "waiting", 10: "manual" });
-    expect(step(snapshot, 4).detail).toBe("152 W at 88 rpm, 1.0 updates/s; Cycling Power 150 W (2 W apart)");
+    expect(step(snapshot, 4).detail).toBe("152 W at 88 rpm, 1.0 updates/s; Cycling Power 150 W vs 152 W over 3 s (2 W apart, limit 5 W)");
     expect(step(snapshot, 10).detail).toContain("Firmware: 4.2.0");
   });
 
@@ -94,8 +94,42 @@ describe("evaluateChecks", () => {
     expect(step({ ...base, indoorBikeData: { ...base.indoorBikeData!, recentCount: 2 } }, 4).state).toBe("fail");
   });
 
-  it("passes the connect step only while connected", () => {
+  it("passes step 4 only when Cycling Power agrees within 5 W or 3 percent", () => {
+    const withPower = (ibdWatts: number, cpsWatts: number): DiagnosticSnapshot => ({
+      ...base,
+      indoorBikeData: { ...base.indoorBikeData!, averagePowerWatts: ibdWatts },
+      cyclingPower: { ...base.cyclingPower!, averagePowerWatts: cpsWatts },
+    });
+    expect(step(withPower(152, 157), 4).state).toBe("pass");
+    expect(step(withPower(300, 309), 4).state).toBe("pass");
+    expect(step(withPower(152, 160), 4)).toMatchObject({ state: "fail", detail: expect.stringContaining("8 W apart, limit 5 W") });
+    expect(step(withPower(300, 310), 4).state).toBe("fail");
+    expect(step({ ...withPower(152, 150), indoorBikeData: { ...base.indoorBikeData!, recentCount: 2 } }, 4).state).toBe("fail");
+  });
+
+  it("never passes step 4 without Cycling Power", () => {
+    const noCps = { ...base, diagnostics: { ...diagnostics, hasCyclingPower: false }, cyclingPower: null };
+    expect(step(noCps, 4)).toMatchObject({ state: "fail", detail: expect.stringContaining("Cycling Power not available") });
+    expect(step({ ...base, cyclingPower: null }, 4)).toMatchObject({ state: "waiting", detail: expect.stringContaining("waiting for Cycling Power") });
+    expect(step({ ...base, cyclingPower: { ...base.cyclingPower!, atMs: 90_000 } }, 4).state).toBe("waiting");
+  });
+
+  it("averages power over 3 s and counts notifications over 5 s", () => {
+    let history: { atMs: number; powerWatts?: number }[] = [];
+    let summary: ReturnType<typeof addRecentSample> | undefined;
+    for (const [atMs, powerWatts] of [[0, 400], [1000, 100], [2000, 200], [3000, 300], [4000, undefined]] as const) {
+      summary = addRecentSample(history, { atMs, powerWatts });
+      history = summary.history;
+    }
+    expect(summary!.recentCount).toBe(5);
+    expect(summary!.averagePowerWatts).toBe(250);
+    expect(addRecentSample(history, { atMs: 9000 }).recentCount).toBe(1);
+    expect(addRecentSample(history, { atMs: 9000 }).averagePowerWatts).toBeUndefined();
+  });
+
+  it("passes the connect step once connected, including while reconnecting", () => {
     expect(step(base, 1).state).toBe("pass");
+    expect(step({ ...base, trainerStatus: "reconnecting" }, 1).state).toBe("pass");
     expect(step({ ...base, trainerStatus: "connecting" }, 1).state).toBe("waiting");
     expect(step({ ...base, trainerStatus: "disconnected" }, 1).state).toBe("waiting");
   });

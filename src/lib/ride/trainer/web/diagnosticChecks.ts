@@ -34,6 +34,13 @@ export interface LiveReading {
   cadenceRpm?: number;
   // Notifications in the last RATE_WINDOW_MS.
   recentCount: number;
+  // Mean power over the last AGREEMENT_WINDOW_MS.
+  averagePowerWatts?: number;
+}
+
+export interface PowerSample {
+  atMs: number;
+  powerWatts?: number;
 }
 
 export interface DiagnosticSnapshot {
@@ -53,6 +60,13 @@ export interface DiagnosticSnapshot {
 
 export const RATE_WINDOW_MS = 5000;
 export const FRESH_MS = 2000;
+// Cycling Power agrees with Indoor Bike Data when their averages over this
+// window differ by at most POWER_AGREEMENT_WATTS or POWER_AGREEMENT_FRACTION of
+// the Indoor Bike Data power, whichever is larger. Averaging keeps samples that
+// arrive at different moments from flapping the result.
+export const AGREEMENT_WINDOW_MS = 3000;
+export const POWER_AGREEMENT_WATTS = 5;
+export const POWER_AGREEMENT_FRACTION = 0.03;
 // Power within this fraction of the target counts as following it...
 export const SETTLE_BAND = 0.05;
 // ...once it has stayed there this long.
@@ -60,6 +74,19 @@ export const SETTLE_HOLD_MS = 2000;
 export const RESPONSE_LIMIT_MS = 1000;
 // The plan expects about 3 s; allow some margin before calling it a fail.
 export const SETTLE_LIMIT_MS = 6000;
+
+// Adds one notification to a characteristic's recent history and summarizes it.
+export function addRecentSample(
+  history: PowerSample[],
+  sample: PowerSample,
+): { history: PowerSample[]; recentCount: number; averagePowerWatts?: number } {
+  const recent = [...history.filter((h) => sample.atMs - h.atMs < RATE_WINDOW_MS), sample];
+  const powers = recent.flatMap((h) =>
+    h.powerWatts !== undefined && sample.atMs - h.atMs < AGREEMENT_WINDOW_MS ? [h.powerWatts] : [],
+  );
+  const averagePowerWatts = powers.length ? powers.reduce((sum, w) => sum + w, 0) / powers.length : undefined;
+  return { history: recent, recentCount: recent.length, averagePowerWatts };
+}
 
 export function newTargetTest(watts: number, sentAtMs: number): TargetTest {
   return { watts, sentAtMs, result: null, latencyMs: null, settledAtMs: null, inBandSinceMs: null, peakWatts: null };
@@ -104,6 +131,19 @@ export function judgeTargetTest(test: TargetTest, nowMs: number): TargetVerdict 
 
 const fresh = (reading: LiveReading | null, nowMs: number) => reading !== null && nowMs - reading.atMs <= FRESH_MS;
 
+function powerAgreement(d: TrainerDiagnostics | null, ibd: LiveReading, cps: LiveReading | null, nowMs: number): TargetVerdict {
+  if (d && !d.hasCyclingPower) return { state: "fail", summary: "Cycling Power not available" };
+  if (!fresh(cps, nowMs) || cps?.averagePowerWatts === undefined || ibd.averagePowerWatts === undefined) {
+    return { state: "waiting", summary: "waiting for Cycling Power" };
+  }
+  const gap = Math.abs(cps.averagePowerWatts - ibd.averagePowerWatts);
+  const limit = Math.max(POWER_AGREEMENT_WATTS, ibd.averagePowerWatts * POWER_AGREEMENT_FRACTION);
+  return {
+    state: gap <= limit ? "pass" : "fail",
+    summary: `Cycling Power ${Math.round(cps.averagePowerWatts)} W vs ${Math.round(ibd.averagePowerWatts)} W over ${AGREEMENT_WINDOW_MS / 1000} s (${Math.round(gap)} W apart, limit ${Math.round(limit)} W)`,
+  };
+}
+
 export function evaluateChecks(s: DiagnosticSnapshot): CheckResult[] {
   const d = s.diagnostics;
   const connected = s.trainerStatus === "connected";
@@ -112,7 +152,7 @@ export function evaluateChecks(s: DiagnosticSnapshot): CheckResult[] {
   results.push({
     step: 1,
     title: "Connect the trainer",
-    state: connected ? "pass" : "waiting",
+    state: connected || s.trainerStatus === "reconnecting" ? "pass" : "waiting",
     detail: s.deviceName ? `Picked "${s.deviceName}"` : "Press Connect trainer and pick the KICKR in the chooser.",
   });
 
@@ -151,15 +191,12 @@ export function evaluateChecks(s: DiagnosticSnapshot): CheckResult[] {
     results.push({ step: 4, title: "Live power and cadence", state: "waiting", detail: "Pedal: waiting for Indoor Bike Data with power and cadence." });
   } else {
     const rateHz = ibd.recentCount / (RATE_WINDOW_MS / 1000);
-    const agreement =
-      fresh(cps, s.nowMs) && cps?.powerWatts !== undefined
-        ? `; Cycling Power ${cps.powerWatts} W (${Math.abs(cps.powerWatts - ibd.powerWatts)} W apart)`
-        : "; no Cycling Power reading";
+    const agreement = powerAgreement(d, ibd, cps, s.nowMs);
     results.push({
       step: 4,
       title: "Live power and cadence",
-      state: rateHz >= 0.8 ? "pass" : "fail",
-      detail: `${ibd.powerWatts} W at ${Math.round(ibd.cadenceRpm)} rpm, ${rateHz.toFixed(1)} updates/s${agreement}`,
+      state: rateHz < 0.8 || agreement.state === "fail" ? "fail" : agreement.state,
+      detail: `${ibd.powerWatts} W at ${Math.round(ibd.cadenceRpm)} rpm, ${rateHz.toFixed(1)} updates/s; ${agreement.summary}`,
     });
   }
 

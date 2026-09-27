@@ -15,13 +15,14 @@ import { browserClock } from "@/lib/ride/trainer/web/clock";
 import { characteristicDecoders } from "@/lib/ride/trainer/web/codec";
 import type { CyclingPowerMeasurement, FitnessMachineStatus, HeartRateMeasurement, IndoorBikeData } from "@/lib/ride/trainer/web/codec";
 import {
+  addRecentSample,
   evaluateChecks,
   judgeTargetTest,
   newTargetTest,
   RATE_WINDOW_MS,
   trackTargetPower,
 } from "@/lib/ride/trainer/web/diagnosticChecks";
-import type { CheckState, DiagnosticSnapshot, LiveReading, TargetTest } from "@/lib/ride/trainer/web/diagnosticChecks";
+import type { CheckState, DiagnosticSnapshot, LiveReading, PowerSample, TargetTest } from "@/lib/ride/trainer/web/diagnosticChecks";
 import { FakeFtmsDevice } from "@/lib/ride/trainer/web/FakeFtmsDevice";
 import { errorMessage } from "@/lib/ride/trainer/web/link";
 import { WebBluetoothTrainer } from "@/lib/ride/trainer/web/WebBluetoothTrainer";
@@ -173,7 +174,7 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
   const logId = useRef(0);
   const showRawRef = useRef(showRaw);
   const captureRef = useRef<{ startedAtMs: number; entries: CaptureEntry[] } | null>(null);
-  const recentRef = useRef<Record<string, number[]>>({});
+  const recentRef = useRef<Record<string, PowerSample[]>>({});
   const reconnectStartedAt = useRef<number | null>(null);
 
   useEffect(() => {
@@ -202,12 +203,11 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
     setLog((previous) => [entry, ...previous].slice(0, MAX_LOG));
   }, []);
 
-  // Counts notifications per characteristic over the rate window.
-  const countRecent = useCallback((key: string, atMs: number): number => {
-    const list = (recentRef.current[key] ?? []).filter((t) => atMs - t < RATE_WINDOW_MS);
-    list.push(atMs);
-    recentRef.current[key] = list;
-    return list.length;
+  // Rate and average power per characteristic.
+  const trackRecent = useCallback((key: string, sample: PowerSample) => {
+    const { history, ...summary } = addRecentSample(recentRef.current[key] ?? [], sample);
+    recentRef.current[key] = history;
+    return summary;
   }, []);
 
   const handleNotification = useCallback(
@@ -227,12 +227,12 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
 
       if (characteristic === "indoorBikeData") {
         const data = event.decoded as IndoorBikeData;
-        const recentCount = countRecent(characteristic, atMs);
+        const recent = trackRecent(characteristic, { atMs, powerWatts: data.powerWatts });
         setIndoorBikeData((previous) => ({
           atMs,
           powerWatts: data.powerWatts ?? previous?.powerWatts,
           cadenceRpm: data.cadenceRpm ?? previous?.cadenceRpm,
-          recentCount,
+          ...recent,
         }));
         if (data.powerWatts !== undefined) {
           const power = data.powerWatts;
@@ -240,8 +240,8 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
         }
       } else if (characteristic === "cyclingPowerMeasurement") {
         const data = event.decoded as CyclingPowerMeasurement;
-        const recentCount = countRecent(characteristic, atMs);
-        setCyclingPower({ atMs, powerWatts: data.powerWatts, cadenceRpm: event.derived?.cadenceRpm, recentCount });
+        const recent = trackRecent(characteristic, { atMs, powerWatts: data.powerWatts });
+        setCyclingPower({ atMs, powerWatts: data.powerWatts, cadenceRpm: event.derived?.cadenceRpm, ...recent });
         // Without FTMS, Cycling Power is the only power source to judge targets by.
         if (!trainerRef.current?.diagnostics.hasFtms) {
           setTargetTests((tests) =>
@@ -258,7 +258,7 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
         );
       }
     },
-    [addLog, countRecent],
+    [addLog, trackRecent],
   );
 
   const attachTrainer = useCallback(
@@ -501,8 +501,8 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
   const canControl = connected && diagnostics?.controlPath !== "none";
   const latestTarget = targetTests.at(-1);
   const powerGap =
-    indoorBikeData?.powerWatts !== undefined && cyclingPower?.powerWatts !== undefined
-      ? Math.abs(indoorBikeData.powerWatts - cyclingPower.powerWatts)
+    indoorBikeData?.averagePowerWatts !== undefined && cyclingPower?.averagePowerWatts !== undefined
+      ? Math.round(Math.abs(indoorBikeData.averagePowerWatts - cyclingPower.averagePowerWatts))
       : null;
 
   if (!fake && support && !support.supported) {
@@ -661,7 +661,7 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
                 label="Power (Cycling Power)"
                 value={cyclingPower?.powerWatts?.toString() ?? "-"}
                 unit="W"
-                sub={powerGap !== null ? `${powerGap} W from Indoor Bike Data` : freshness(cyclingPower, nowMs)}
+                sub={powerGap !== null ? `${powerGap} W from Indoor Bike Data (3 s average)` : freshness(cyclingPower, nowMs)}
               />
               <Metric label="Cadence (crank data)" value={cyclingPower?.cadenceRpm !== undefined ? Math.round(cyclingPower.cadenceRpm).toString() : "-"} unit="rpm" sub="the KICKR CORE estimates it" />
               <Metric label="Heart rate" value={heartRate?.bpm?.toString() ?? "-"} unit="bpm" sub={heartRate ? heartRate.status : "no strap"} />
