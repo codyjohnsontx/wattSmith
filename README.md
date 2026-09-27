@@ -11,6 +11,7 @@ Wattsmith is a cycling analysis-to-prescription workspace. It helps a rider unde
 - One-time migration of legacy browser-local workouts into the signed-in athlete’s cloud library; local data is not automatically deleted.
 - `.mrc` percentage export and `.erg` watt export with previews, file naming, validation warnings, text cues, round-trip parsing, and committed golden fixtures.
 - `.zwo`, `.erg` and `.mrc` import from the Library tab (button or drag-drop) into an unsaved builder draft, with a warnings report for anything the importer skipped or approximated. Zwift free-ride blocks import as hatched blocks with no ERG target.
+- A trainer diagnostics page at `/ride/devices` that connects a smart trainer (tested target: Wahoo KICKR CORE) over Web Bluetooth using the Fitness Machine Service, shows live power, cadence and heart rate with the raw characteristics, sets ERG targets, reconnects after dropouts, and checks off the [hardware test script](docs/hardware-testing.md). Needs Chrome or Edge over HTTPS or localhost; `/ride/devices?device=fake` runs it on a simulated trainer. Riding a workout is in progress.
 - Dated FTP history so activity calculations use the FTP effective on the ride date.
 - A separate, revocable Strava data connection with encrypted tokens, rotating refresh-token persistence, lazy activity pagination, and caches capped at seven days.
 - Deep race/hard-ride analysis: power coverage, weighted power, IF, estimated TSS, Wattsmith zones, peak efforts, variability, durability comparisons, and data-quality notes.
