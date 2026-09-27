@@ -408,6 +408,12 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
   async function setTarget(watts: number) {
     const trainer = trainerRef.current;
     if (!trainer || !Number.isFinite(watts)) return;
+    if (!trainer.ergOn) {
+      await trainer.setTargetPower(watts);
+      setTargetWatts(trainer.targetWatts);
+      addLog("page", "info", `ERG is off: ${trainer.targetWatts} W is remembered and sent when ERG is turned on.`);
+      return;
+    }
     const sentAtMs = browserClock.now();
     setTargetTests((tests) => [...tests, newTargetTest(watts, sentAtMs, sessionRef.current)]);
     const result = await trainer.setTargetPower(watts);

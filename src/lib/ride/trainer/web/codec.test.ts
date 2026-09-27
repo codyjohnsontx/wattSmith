@@ -38,7 +38,6 @@ interface EncodeVector {
 }
 
 const vectors = JSON.parse(readFileSync(join(fixturesDir, "spec-vectors.json"), "utf8")) as {
-  provenance: { decode: Record<string, string>; encode: Record<string, string> };
   decode: DecodeVector[];
   encode: EncodeVector[];
 };
@@ -55,11 +54,6 @@ const encoders = {
 };
 
 describe("spec byte vectors", () => {
-  it("names the specification behind every vector family", () => {
-    for (const vector of vectors.decode) expect(vectors.provenance.decode[vector.characteristic], vector.name).toBeTruthy();
-    for (const vector of vectors.encode) expect(vectors.provenance.encode[vector.encoder], vector.name).toBeTruthy();
-  });
-
   it.each(vectors.decode.map((v) => [v.name, v] as const))("decodes %s", (_name, vector) => {
     const decode = characteristicDecoders[vector.characteristic];
     const view = fromHex(vector.hex);

@@ -416,6 +416,45 @@ describe("WebBluetoothTrainer review reproductions", () => {
     expect(device.writes).toEqual([[0x00]]);
   });
 
+  it("does not keep a target refused with a stopped flywheel once a newer target was set", async () => {
+    const { clock, device, trainer } = await connected();
+    device.cadenceRpm = 0;
+    await run(clock, 1000);
+    device.options.responseDelayMs = 300;
+    const old = trainer.setTargetPower(250);
+    await settle();
+    const newer = trainer.setTargetPower(150);
+    device.hasControl = false;
+    device.controlHeldElsewhere = true;
+    expect(await drive(clock, Promise.all([old, newer]))).toEqual([
+      { status: "rejected", reason: "operationFailed" },
+      { status: "rejected", reason: "controlNotPermitted" },
+    ]);
+    device.controlHeldElsewhere = false;
+    device.cadenceRpm = 90;
+    await run(clock, 2000);
+    expect(await drive(clock, trainer.requestControl())).toBe(true);
+    await run(clock, 500);
+    expect(trainer.targetWatts).toBe(150);
+    expect(device.targetWatts).toBe(150);
+  });
+
+  it("does not count a target remembered with ERG off as accepted after a reconnect", async () => {
+    const { clock, device, trainer } = await connected();
+    await drive(clock, trainer.setTargetPower(150));
+    await drive(clock, trainer.setErgEnabled(false));
+    device.powerOff();
+    await run(clock, 1000);
+    device.powerOn();
+    await run(clock, 6000);
+    expect(trainer.status).toBe("connected");
+    await drive(clock, trainer.setTargetPower(160));
+    expect(trainer.diagnostics.postReconnectTarget).toBeNull();
+    await drive(clock, trainer.setErgEnabled(true));
+    expect(device.targetWatts).toBe(160);
+    expect(trainer.diagnostics.postReconnectTarget).toEqual({ watts: 160, result: { status: "applied", watts: 160, clamped: false } });
+  });
+
   it("records the first target result after a reconnect", async () => {
     const { clock, device, trainer } = await connected();
     await drive(clock, trainer.setTargetPower(150));

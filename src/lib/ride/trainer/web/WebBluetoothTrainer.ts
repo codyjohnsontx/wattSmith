@@ -241,6 +241,10 @@ export class WebBluetoothTrainer implements Trainer {
     return this.lastTargetWatts;
   }
 
+  get ergOn(): boolean {
+    return this.ergEnabled;
+  }
+
   on<K extends keyof WebTrainerEvents>(event: K, listener: (payload: WebTrainerEvents[K]) => void): () => void {
     return this.emitter.on(event, listener);
   }
@@ -280,8 +284,9 @@ export class WebBluetoothTrainer implements Trainer {
   }
 
   async setTargetPower(watts: number): Promise<TargetPowerResult> {
+    const written = this.ergEnabled;
     const result = await this.applyTarget(watts);
-    if (this.awaitingPostReconnectTarget && this.status === "connected" && result.status !== "superseded") {
+    if (written && this.awaitingPostReconnectTarget && this.status === "connected" && result.status !== "superseded") {
       this.postReconnectTarget = { watts: this.lastTargetWatts ?? Math.round(watts), result };
       if (result.status === "applied") this.awaitingPostReconnectTarget = false;
       this.emitter.emit("diagnostic", { type: "changed" });
@@ -612,7 +617,7 @@ export class WebBluetoothTrainer implements Trainer {
       case "operationFailed":
         // A KICKR refuses targets while the flywheel is stopped: retry once the
         // rider pedals, but not in a loop when it fails while pedaling.
-        if (!this.lastCadenceRpm) this.retryWhenPedaling = watts;
+        if (!this.lastCadenceRpm && generation === this.targetGeneration) this.retryWhenPedaling = watts;
         return { status: "rejected", reason: "operationFailed" };
       case "invalidParameter":
         return { status: "rejected", reason: "invalidParameter" };
