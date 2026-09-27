@@ -131,6 +131,7 @@ export class GattLink {
           if (generation !== this.generation) throw new Error("Superseded connect attempt");
           await this.hooks.setup(connected);
           if (generation !== this.generation) throw new Error("Superseded connect attempt");
+          if (!connected.connected) throw new Error("The link dropped during setup");
         })(),
       );
     } catch (error) {

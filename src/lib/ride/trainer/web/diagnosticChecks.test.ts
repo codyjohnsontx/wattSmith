@@ -94,6 +94,12 @@ describe("evaluateChecks", () => {
     expect(step({ ...base, indoorBikeData: { ...base.indoorBikeData!, recentCount: 2 } }, 4).state).toBe("fail");
   });
 
+  it("passes the connect step only while connected", () => {
+    expect(step(base, 1).state).toBe("pass");
+    expect(step({ ...base, trainerStatus: "connecting" }, 1).state).toBe("waiting");
+    expect(step({ ...base, trainerStatus: "disconnected" }, 1).state).toBe("waiting");
+  });
+
   it("tracks the reconnect step", () => {
     expect(step({ ...base, trainerStatus: "reconnecting" }, 8).state).toBe("waiting");
     const recovered = { ...base, diagnostics: { ...diagnostics, reconnectCount: 1 }, lastReconnectMs: 12_400 };

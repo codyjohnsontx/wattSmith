@@ -112,6 +112,16 @@ describe("WebBluetoothTrainer connect", () => {
     expect(statuses).toEqual(["connecting", "disconnected"]);
   });
 
+  it("fails the connect when the link drops during Request Control", async () => {
+    const { clock, device, trainer, statuses } = setup();
+    const connecting = trainer.connect();
+    await run(clock, 120);
+    device.powerOff();
+    await expect(drive(clock, connecting)).rejects.toThrow(/dropped during setup/);
+    expect(trainer.status).toBe("disconnected");
+    expect(statuses).toEqual(["connecting", "disconnected"]);
+  });
+
   it("offers no control on a power-meter-only trainer", async () => {
     const { trainer, samples, clock } = await connected({ withFtms: false });
     expect(trainer.diagnostics.controlPath).toBe("none");
@@ -251,6 +261,20 @@ describe("WebBluetoothTrainer reconnect", () => {
     const countBefore = samples.length;
     await run(clock, 3000);
     expect(samples.length).toBeGreaterThan(countBefore);
+  });
+
+  it("keeps reconnecting when the link drops again during setup", async () => {
+    const { clock, device, trainer } = await connected();
+    device.powerOff();
+    device.powerOn();
+    await run(clock, 620);
+    device.powerOff();
+    await run(clock, 2000);
+    expect(trainer.status).toBe("reconnecting");
+    device.powerOn();
+    await run(clock, 6000);
+    expect(trainer.status).toBe("connected");
+    expect(trainer.diagnostics.controlState).toBe("granted");
   });
 
   it("gives up after 60 s and reports a disconnect", async () => {

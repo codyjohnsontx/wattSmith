@@ -112,7 +112,7 @@ export function evaluateChecks(s: DiagnosticSnapshot): CheckResult[] {
   results.push({
     step: 1,
     title: "Connect the trainer",
-    state: d ? "pass" : "waiting",
+    state: connected ? "pass" : "waiting",
     detail: s.deviceName ? `Picked "${s.deviceName}"` : "Press Connect trainer and pick the KICKR in the chooser.",
   });
 
