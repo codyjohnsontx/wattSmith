@@ -14,11 +14,11 @@ const platformMessage = "The ride engine is platform neutral: pass time and plat
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
-  // The ride engine and file formats are shared with a future phone app, so
+  // The ride engine, file formats and Bluetooth byte codec are shared with a future phone app, so
   // they stay platform neutral: no React, Next, DOM, Node, timers or wall
   // clock. Time enters only through event timestamps.
   {
-    files: ["src/lib/ride/engine/**", "src/lib/ride/formats/**"],
+    files: ["src/lib/ride/engine/**", "src/lib/ride/formats/**", "src/lib/ride/trainer/web/codec.ts"],
     // Tests run only under Vitest and may import it.
     ignores: ["**/*.test.ts"],
     rules: {

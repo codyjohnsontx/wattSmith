@@ -20,6 +20,8 @@
 - Migration verification currently reviews and unit-tests behavior around schema services, but should execute the backfill against representative pre-migration Postgres data.
 - Real Strava OAuth remains outside browser E2E by design. Route handlers should continue using mocked upstream HTTP responses; never put live access/refresh tokens in fixtures, logs, snapshots, or CI secrets without an explicit secure-test plan.
 
+- Web Bluetooth trainer control is tested in CI only against spec-derived byte vectors and a simulated FTMS device. Real KICKR CORE byte captures and the hardware test script results ([hardware-testing.md](hardware-testing.md)) are still to be recorded.
+
 ## Medium Priority
 
 - Extract more route orchestration into service functions if mocked route suites grow substantially.
