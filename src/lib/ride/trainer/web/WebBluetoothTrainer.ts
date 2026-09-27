@@ -98,7 +98,10 @@ export type WebTrainerEvents = TrainerEvents & { diagnostic: DiagnosticEvent };
 export interface WebBluetoothTrainerOptions {
   clock: SimClock;
   wahooFallback: boolean;
-  controlTimeoutMs: number;
+  // A control point response slower than this is logged as late; with none
+  // by the deadline the session is rebuilt.
+  controlLateMs: number;
+  controlDeadlineMs: number;
   // With no trainer data for this long, restart notifications; for the longer
   // time, drop the link so the reconnect loop rebuilds it.
   staleResubscribeMs: number;
@@ -197,7 +200,8 @@ export class WebBluetoothTrainer implements Trainer {
   ) {
     this.options = {
       wahooFallback: wahooFallbackEnabled,
-      controlTimeoutMs: 1000,
+      controlLateMs: 1000,
+      controlDeadlineMs: 5000,
       staleResubscribeMs: 3000,
       staleReconnectMs: 10_000,
       cadenceTimeoutMs: 3000,
@@ -404,7 +408,8 @@ export class WebBluetoothTrainer implements Trainer {
       const control = new FtmsControlPoint(
         { write: (value) => controlPoint.writeValueWithResponse(value) },
         this.options.clock,
-        this.options.controlTimeoutMs,
+        this.options.controlLateMs,
+        this.options.controlDeadlineMs,
         (level, message) => this.log(level, message),
         () => this.link.forceReconnect("the control point stopped answering"),
       );

@@ -163,7 +163,7 @@ export function evaluateChecks(s: DiagnosticSnapshot): CheckResult[] {
   results.push({
     step: 1,
     title: "Connect the trainer",
-    state: connected ? "pass" : "waiting",
+    state: connected || s.trainerStatus === "reconnecting" ? "pass" : "waiting",
     detail: !s.deviceName
       ? "Press Connect trainer and pick the KICKR in the chooser."
       : connected

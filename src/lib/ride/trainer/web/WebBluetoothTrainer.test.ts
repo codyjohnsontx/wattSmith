@@ -4,6 +4,7 @@ import { ManualClock } from "../SimulatedTrainer";
 import type { TrainerEvents } from "../Trainer";
 import { FakeFtmsDevice } from "./FakeFtmsDevice";
 import type { FakeFtmsOptions } from "./FakeFtmsDevice";
+import { judgeTargetTest, newTargetTest } from "./diagnosticChecks";
 import { backoffDelayMs } from "./link";
 import { WebBluetoothTrainer } from "./WebBluetoothTrainer";
 import type { DiagnosticEvent, WebBluetoothTrainerOptions } from "./WebBluetoothTrainer";
@@ -178,10 +179,16 @@ describe("WebBluetoothTrainer targets", () => {
     ]);
   });
 
-  it("times out a write that gets no indication", async () => {
-    const { clock, device, trainer } = await connected();
-    device.options.responseDelayMs = 5000;
-    expect(await drive(clock, trainer.setTargetPower(150))).toEqual({ status: "timeout" });
+  it("times out a write that gets no indication within 5 s", async () => {
+    const { clock, device, trainer, logs } = await connected();
+    device.options.responseDelayMs = 6000;
+    expect(await drive(clock, trainer.setTargetPower(150), 10_000)).toEqual({ status: "timeout" });
+    expect(logs()).toEqual(
+      expect.arrayContaining([
+        "No response to Set Target Power within 1000 ms; still waiting.",
+        "No response to Set Target Power within 5000 ms; rebuilding the session.",
+      ]),
+    );
   });
 
   it("retries a target refused with a stopped flywheel once the rider pedals", async () => {
@@ -344,15 +351,40 @@ describe("WebBluetoothTrainer review reproductions", () => {
     expect(device.writes.filter((w) => w[0] === 0x05)).toEqual([[0x05, 0xfa, 0x00]]);
   });
 
-  it("does not start a procedure while a timed-out one is still in progress (finding 2)", async () => {
+  it("keeps ERG through a 1.5 s Set Target Power and judges it over the limit", async () => {
     const { clock, device, trainer, statuses } = await connected();
     device.options.responseDelayMs = 1500;
+    const sentAtMs = clock.now();
+    const first = trainer.setTargetPower(150);
+    await settle();
+    const second = trainer.setTargetPower(200);
+    const third = trainer.setTargetPower(250);
+    const firstResult = await drive(clock, first);
+    const latencyMs = clock.now() - sentAtMs;
+    expect(firstResult).toEqual({ status: "applied", watts: 150, clamped: false });
+    expect(judgeTargetTest({ ...newTargetTest(150, sentAtMs), result: firstResult, latencyMs }, clock.now())).toEqual({
+      state: "fail",
+      summary: `response ${latencyMs} ms, over the 1000 ms limit`,
+    });
+    expect(await drive(clock, Promise.all([second, third]))).toEqual([{ status: "superseded" }, { status: "applied", watts: 250, clamped: false }]);
+    expect(device.writes.slice(2)).toEqual([
+      [0x05, 0x96, 0x00],
+      [0x05, 0xfa, 0x00],
+    ]);
+    expect(device.rejectedWrites).toEqual([]);
+    expect(statuses).toEqual(["connecting", "connected"]);
+    expect(trainer.diagnostics.controlState).toBe("granted");
+  });
+
+  it("does not start a procedure while an unanswered one is still in progress (finding 2)", async () => {
+    const { clock, device, trainer, statuses } = await connected();
+    device.options.responseDelayMs = 6000;
     const first = trainer.setTargetPower(150);
     await settle();
     const second = trainer.setTargetPower(250);
-    const [firstResult, secondResult] = await drive(clock, Promise.all([first, second]));
+    const [firstResult, secondResult] = await drive(clock, Promise.all([first, second]), 10_000);
     expect(firstResult).toEqual({ status: "timeout" });
-    // The late 150 W indication must never count as the 250 W response.
+    // The 150 W indication after the deadline must never count as the 250 W response.
     expect(secondResult).toEqual({ status: "rejected", reason: "notConnected" });
     expect(device.rejectedWrites).toEqual([]);
     expect(device.writes.slice(2)).toEqual([[0x05, 0x96, 0x00]]);
@@ -409,8 +441,16 @@ describe("WebBluetoothTrainer review reproductions", () => {
     expect(device.targetWatts).toBe(150);
   });
 
+  it("connects when the trainer answers Request Control in 1.2 s", async () => {
+    const { clock, device, trainer, statuses } = setup({ responseDelayMs: 1200 });
+    await drive(clock, trainer.connect());
+    expect(statuses).toEqual(["connecting", "connected"]);
+    expect(trainer.diagnostics.controlState).toBe("granted");
+    expect(device.writes).toEqual([[0x00], [0x07]]);
+  });
+
   it("fails the connect when the control point never answers Request Control (finding 2)", async () => {
-    const { clock, device, trainer, statuses } = setup({ responseDelayMs: 5000 });
+    const { clock, device, trainer, statuses } = setup({ responseDelayMs: 60_000 });
     await expect(drive(clock, trainer.connect(), 20_000)).rejects.toThrow("The control point did not answer Request Control.");
     expect(statuses).toEqual(["connecting", "disconnected"]);
     expect(device.writes).toEqual([[0x00]]);

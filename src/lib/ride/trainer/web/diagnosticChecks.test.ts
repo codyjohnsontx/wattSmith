@@ -206,10 +206,10 @@ describe("checklist rows prove what they claim", () => {
     expect(step(proven, 8)).toMatchObject({ state: "pass", detail: expect.stringContaining("150 W accepted after reconnecting") });
   });
 
-  it("step 1 reflects the current connection, not a past one", () => {
-    expect(step({ ...base, trainerStatus: "reconnecting" }, 1).state).toBe("waiting");
+  it("passes the connect step once connected, including while reconnecting", () => {
+    expect(step(base, 1).state).toBe("pass");
+    expect(step({ ...base, trainerStatus: "reconnecting" }, 1).state).toBe("pass");
     expect(step({ ...base, trainerStatus: "connecting" }, 1).state).toBe("waiting");
     expect(step({ ...base, trainerStatus: "disconnected" }, 1).state).toBe("waiting");
-    expect(step(base, 1).state).toBe("pass");
   });
 });

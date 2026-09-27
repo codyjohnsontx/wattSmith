@@ -9,12 +9,12 @@ import type { ControlPointResponse } from "./codec";
 // coalesce: a queued target that has not been written yet is replaced by a
 // newer one.
 //
-// A procedure is complete only when its indication arrives (FTMS 4.16.4); a
-// local timeout does not end it on the trainer, and a late indication carries
-// only the request op code, so it could be mistaken for a newer command's
-// response. After a timeout the client is therefore desynchronized: it fails
-// everything queued, refuses new work, and asks its owner to rebuild the GATT
-// session.
+// A procedure is complete only when its indication arrives (FTMS 4.16.4), and
+// an indication carries only the request op code, so the client keeps waiting
+// for the procedure in flight: a response after `lateMs` is logged as late but
+// still completes it. Only after `deadlineMs` with no answer is the client
+// desynchronized: it fails everything queued, refuses new work, and asks its
+// owner to rebuild the GATT session.
 
 export type ControlOutcome =
   | { status: "response"; response: ControlPointResponse; latencyMs: number }
@@ -51,9 +51,10 @@ export class FtmsControlPoint {
   constructor(
     private readonly transport: ControlPointTransport,
     private readonly clock: SimClock,
-    private readonly timeoutMs = 1000,
+    private readonly lateMs = 1000,
+    private readonly deadlineMs = 5000,
     private readonly log: (level: "info" | "warn", message: string) => void = () => {},
-    // Called once when a timeout leaves the procedure state unknown.
+    // Called once when a missed deadline leaves the procedure state unknown.
     private readonly onDesynchronized: () => void = () => {},
   ) {}
 
@@ -124,9 +125,13 @@ export class FtmsControlPoint {
     this.inFlight = inFlight;
     inFlight.timer = this.clock.setTimeout(() => {
       if (this.inFlight !== inFlight) return;
-      this.log("warn", `No response to ${opName(job.opCode)} within ${this.timeoutMs} ms; rebuilding the session.`);
-      this.desynchronize();
-    }, this.timeoutMs);
+      this.log("warn", `No response to ${opName(job.opCode)} within ${this.lateMs} ms; still waiting.`);
+      inFlight.timer = this.clock.setTimeout(() => {
+        if (this.inFlight !== inFlight) return;
+        this.log("warn", `No response to ${opName(job.opCode)} within ${this.deadlineMs} ms; rebuilding the session.`);
+        this.desynchronize();
+      }, this.deadlineMs - this.lateMs);
+    }, this.lateMs);
     this.transport.write(job.value).catch((error: unknown) => {
       if (this.inFlight !== inFlight) return;
       this.finish({ status: "writeFailed", error: error instanceof Error ? error.message : String(error) });
