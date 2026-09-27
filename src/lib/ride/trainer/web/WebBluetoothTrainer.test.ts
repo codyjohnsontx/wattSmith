@@ -167,6 +167,7 @@ describe("WebBluetoothTrainer targets", () => {
   it("keeps one write in flight and lets the newest queued target win", async () => {
     const { clock, device, trainer } = await connected({ responseDelayMs: 300 });
     const first = trainer.setTargetPower(100);
+    await settle();
     const second = trainer.setTargetPower(120);
     const third = trainer.setTargetPower(140);
     const results = await drive(clock, Promise.all([first, second, third]));
@@ -310,5 +311,119 @@ describe("WebBluetoothTrainer reconnect", () => {
     await run(clock, 5000);
     expect(statuses).toEqual(["connecting", "connected", "disconnected"]);
     expect(disconnects).toEqual(["requested"]);
+  });
+});
+
+// Reproductions from the second-opinion review of PR 20 (Codex, findings 1-4).
+describe("WebBluetoothTrainer review reproductions", () => {
+  it("never writes an older target after a newer release target (finding 1)", async () => {
+    const { clock, device, trainer } = await connected();
+    device.options.responseDelayMs = 300;
+    device.hasControl = false;
+    const old = trainer.setTargetPower(250);
+    // The 250 W write is refused and Request Control is on its way.
+    await run(clock, 350);
+    expect(device.writes.slice(2)).toEqual([[0x05, 0xfa, 0x00], [0x00]]);
+    const release = trainer.setTargetPower(50);
+    const [oldResult, releaseResult] = await drive(clock, Promise.all([old, release]));
+    expect(oldResult).toEqual({ status: "superseded" });
+    expect(releaseResult).toEqual({ status: "applied", watts: 50, clamped: false });
+    expect(device.writes.slice(2)).toEqual([[0x05, 0xfa, 0x00], [0x00], [0x07], [0x05, 0x32, 0x00]]);
+    expect(device.targetWatts).toBe(50);
+  });
+
+  it("sends nothing after ERG is turned off while control is being reacquired (finding 1)", async () => {
+    const { clock, device, trainer } = await connected();
+    device.options.responseDelayMs = 300;
+    device.hasControl = false;
+    const old = trainer.setTargetPower(250);
+    await run(clock, 350);
+    const off = trainer.setErgEnabled(false);
+    expect(await drive(clock, old)).toEqual({ status: "superseded" });
+    await drive(clock, off);
+    expect(device.writes.filter((w) => w[0] === 0x05)).toEqual([[0x05, 0xfa, 0x00]]);
+  });
+
+  it("does not start a procedure while a timed-out one is still in progress (finding 2)", async () => {
+    const { clock, device, trainer, statuses } = await connected();
+    device.options.responseDelayMs = 1500;
+    const first = trainer.setTargetPower(150);
+    await settle();
+    const second = trainer.setTargetPower(250);
+    const [firstResult, secondResult] = await drive(clock, Promise.all([first, second]));
+    expect(firstResult).toEqual({ status: "timeout" });
+    // The late 150 W indication must never count as the 250 W response.
+    expect(secondResult).toEqual({ status: "rejected", reason: "notConnected" });
+    expect(device.rejectedWrites).toEqual([]);
+    expect(device.writes.slice(2)).toEqual([[0x05, 0x96, 0x00]]);
+
+    // The session is rebuilt, then the latest target is sent.
+    device.options.responseDelayMs = 50;
+    await run(clock, 5000);
+    expect(statuses.slice(-2)).toEqual(["reconnecting", "connected"]);
+    expect(device.targetWatts).toBe(250);
+    expect(device.rejectedWrites).toEqual([]);
+  });
+
+  it("resubscribes and reconnects a trainer silent from the first notification (finding 3)", async () => {
+    const { clock, device, trainer, logs } = setup();
+    device.silent = true;
+    await drive(clock, trainer.connect());
+    await run(clock, 4000);
+    expect(logs().some((m) => m.startsWith("No trainer data for 3 s; restarting notifications."))).toBe(true);
+    await run(clock, 7000);
+    expect(logs().some((m) => m.startsWith("Forcing a reconnect: no trainer data for 10 s"))).toBe(true);
+    device.silent = false;
+    await run(clock, 3000);
+    expect(trainer.status).toBe("connected");
+    expect(trainer.diagnostics.reconnectCount).toBe(1);
+  });
+
+  it("restarts only Indoor Bike Data when Cycling Power keeps flowing (finding 3)", async () => {
+    const { clock, device, trainer, samples, logs } = await connected();
+    await run(clock, 2000);
+    device.silentIndoorBikeData = true;
+    const before = samples.length;
+    await run(clock, 12_000);
+    expect(logs()).toContain("No Indoor Bike Data for 3 s; restarting its notifications.");
+    expect(trainer.status).toBe("connected");
+    expect(trainer.diagnostics.reconnectCount).toBe(0);
+    // Cycling Power takes over as the sample source.
+    expect(samples.length).toBeGreaterThan(before + 5);
+  });
+
+  it("surfaces an initial Request Control denial and sends the latest target once control returns (finding 4)", async () => {
+    const { clock, device, trainer } = setup();
+    device.controlHeldElsewhere = true;
+    await drive(clock, trainer.connect());
+    expect(trainer.status).toBe("connected");
+    expect(trainer.diagnostics.controlState).toBe("denied");
+    expect(trainer.capabilities.targetPower).toBe(false);
+    expect(await drive(clock, trainer.setTargetPower(150))).toEqual({ status: "rejected", reason: "controlNotPermitted" });
+    expect(device.writes).toEqual([[0x00]]);
+
+    device.controlHeldElsewhere = false;
+    expect(await drive(clock, trainer.requestControl())).toBe(true);
+    await run(clock, 500);
+    expect(trainer.capabilities.targetPower).toBe(true);
+    expect(device.targetWatts).toBe(150);
+  });
+
+  it("fails the connect when the control point never answers Request Control (finding 2)", async () => {
+    const { clock, device, trainer, statuses } = setup({ responseDelayMs: 5000 });
+    await expect(drive(clock, trainer.connect(), 20_000)).rejects.toThrow("The control point did not answer Request Control.");
+    expect(statuses).toEqual(["connecting", "disconnected"]);
+    expect(device.writes).toEqual([[0x00]]);
+  });
+
+  it("records the first target result after a reconnect", async () => {
+    const { clock, device, trainer } = await connected();
+    await drive(clock, trainer.setTargetPower(150));
+    expect(trainer.diagnostics.postReconnectTarget).toBeNull();
+    device.powerOff();
+    await run(clock, 1000);
+    device.powerOn();
+    await run(clock, 6000);
+    expect(trainer.diagnostics.postReconnectTarget).toEqual({ watts: 150, result: { status: "applied", watts: 150, clamped: false } });
   });
 });

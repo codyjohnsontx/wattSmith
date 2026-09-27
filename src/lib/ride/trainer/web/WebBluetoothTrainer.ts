@@ -73,6 +73,9 @@ export interface TrainerDiagnostics {
   controlPath: ControlPath;
   controlState: ControlState;
   reconnectCount: number;
+  // The first target result after the latest reconnect: proof that control
+  // came back, not just the link. Null until a target is attempted.
+  postReconnectTarget: { watts: number; result: TargetPowerResult } | null;
 }
 
 export type DiagnosticEvent =
@@ -107,6 +110,13 @@ export interface WebBluetoothTrainerOptions {
 
 const WATCHDOG_INTERVAL_MS = 1000;
 
+interface DataStream {
+  label: string;
+  characteristic: GattCharacteristic;
+  lastAtMs: number;
+  resubscribed: boolean;
+}
+
 const emptyDiagnostics = (): TrainerDiagnostics => ({
   services: [],
   deviceInformation: {},
@@ -119,6 +129,7 @@ const emptyDiagnostics = (): TrainerDiagnostics => ({
   controlPath: "none",
   controlState: "none",
   reconnectCount: 0,
+  postReconnectTarget: null,
 });
 
 const noCapabilities: TrainerCapabilities = {
@@ -159,14 +170,22 @@ export class WebBluetoothTrainer implements Trainer {
 
   private ergEnabled = true;
   private lastTargetWatts: number | null = null;
+  // Bumped by every target request, ERG change and disconnect. A target write
+  // that awaited something (control, a retry) is dropped when a newer request
+  // arrived meanwhile, so an older target can never follow a newer one.
+  private targetGeneration = 0;
+  private previousStatus: TrainerStatus = "disconnected";
+  private awaitingPostReconnectTarget = false;
+  private postReconnectTarget: TrainerDiagnostics["postReconnectTarget"] = null;
   // A target the trainer refused with "operation failed" (a stopped flywheel);
   // re-sent on the first sample with cadence.
   private retryWhenPedaling: number | null = null;
 
   private watchdog: number | null = null;
-  private lastDataAtMs: number | null = null;
+  // Notifying data characteristics on this connection, each with its own
+  // silence clock (armed at connect, not at first data).
+  private dataStreams = new Map<string, DataStream>();
   private lastIndoorBikeDataAtMs = -Infinity;
-  private resubscribed = false;
   private previousCrank: CrankRevolutionData | null = null;
   private lastCrankEventAtMs = -Infinity;
   private cyclingPowerCadence: number | undefined;
@@ -203,12 +222,15 @@ export class WebBluetoothTrainer implements Trainer {
     return this.link.status;
   }
 
+  // Target power is available only while control is held: a trainer another
+  // app controls reports data but takes no targets.
   get capabilities(): TrainerCapabilities {
-    return this.caps;
+    if (this.info.controlPath !== "ftms" || this.info.controlState === "granted") return this.caps;
+    return { ...this.caps, targetPower: false };
   }
 
   get diagnostics(): TrainerDiagnostics {
-    return { ...this.info, reconnectCount: this.link.reconnectCount };
+    return { ...this.info, reconnectCount: this.link.reconnectCount, postReconnectTarget: this.postReconnectTarget };
   }
 
   get name(): string {
@@ -228,6 +250,7 @@ export class WebBluetoothTrainer implements Trainer {
   }
 
   async disconnect(): Promise<void> {
+    this.targetGeneration += 1;
     this.teardownConnection();
     await this.link.disconnect();
     this.emitter.emit("disconnect", { reason: "requested" });
@@ -237,6 +260,7 @@ export class WebBluetoothTrainer implements Trainer {
   // hold a target outside ERG. Turning ERG back on sends it.
   async setErgEnabled(enabled: boolean): Promise<void> {
     this.ergEnabled = enabled;
+    this.targetGeneration += 1;
     if (this.status !== "connected") return;
     if (enabled) {
       if (this.lastTargetWatts !== null) await this.setTargetPower(this.lastTargetWatts);
@@ -256,6 +280,16 @@ export class WebBluetoothTrainer implements Trainer {
   }
 
   async setTargetPower(watts: number): Promise<TargetPowerResult> {
+    const result = await this.applyTarget(watts);
+    if (this.awaitingPostReconnectTarget && this.status === "connected" && result.status !== "superseded") {
+      this.postReconnectTarget = { watts: this.lastTargetWatts ?? Math.round(watts), result };
+      if (result.status === "applied") this.awaitingPostReconnectTarget = false;
+      this.emitter.emit("diagnostic", { type: "changed" });
+    }
+    return result;
+  }
+
+  private async applyTarget(watts: number): Promise<TargetPowerResult> {
     if (this.status !== "connected") return { status: "rejected", reason: "notConnected" };
     if (this.info.controlPath === "none") return { status: "rejected", reason: "notSupported" };
 
@@ -263,6 +297,8 @@ export class WebBluetoothTrainer implements Trainer {
     const clamped = target !== Math.round(watts);
     if (clamped) this.log("info", `Target ${Math.round(watts)} W clamped to ${target} W (supported range).`);
     this.lastTargetWatts = target;
+    const generation = ++this.targetGeneration;
+    this.retryWhenPedaling = null;
     if (!this.ergEnabled) return { status: "applied", watts: target, clamped };
 
     if (this.info.controlPath === "wahoo" && this.wahoo) {
@@ -274,17 +310,19 @@ export class WebBluetoothTrainer implements Trainer {
         return { status: "rejected", reason: "operationFailed" };
       }
     }
-    return this.writeFtmsTarget(target, clamped, false);
+    return this.writeFtmsTarget(target, clamped, generation, false);
   }
 
-  // Requests FTMS control (the diagnostics page's "Request control" button and
-  // the retry after another app took control). Resolves true when granted.
-  requestControl(): Promise<boolean> {
-    if (!this.control) return Promise.resolve(false);
-    this.controlRequest ??= this.doRequestControl().finally(() => {
-      this.controlRequest = null;
-    });
-    return this.controlRequest;
+  // Requests FTMS control (the diagnostics page's "Request control" and Retry
+  // buttons, and the automatic reclaim after another app took control). Once
+  // granted, the latest requested target is sent: the trainer holds nothing
+  // Wattsmith asked for while another app had control.
+  async requestControl(): Promise<boolean> {
+    const granted = await this.acquireControl();
+    if (granted && this.status === "connected" && this.ergEnabled && this.lastTargetWatts !== null) {
+      void this.setTargetPower(this.lastTargetWatts);
+    }
+    return granted;
   }
 
   // Reads a characteristic discovered on the current connection, for the
@@ -340,6 +378,7 @@ export class WebBluetoothTrainer implements Trainer {
 
     if (indoorBikeData) {
       await this.subscribe(indoorBikeData, "indoorBikeData", (decoded) => this.handleIndoorBikeData(decoded as IndoorBikeData));
+      this.dataStreams.set("indoorBikeData", { label: "Indoor Bike Data", characteristic: indoorBikeData, lastAtMs: this.options.clock.now(), resubscribed: false });
     }
     if (status) {
       await this.subscribe(status, "fitnessMachineStatus", (decoded) => this.handleMachineStatus(decoded as FitnessMachineStatus));
@@ -348,6 +387,12 @@ export class WebBluetoothTrainer implements Trainer {
       await this.subscribe(powerMeasurement, "cyclingPowerMeasurement", (decoded) =>
         this.handlePowerMeasurement(decoded as CyclingPowerMeasurement),
       );
+      this.dataStreams.set("cyclingPowerMeasurement", {
+        label: "Cycling Power",
+        characteristic: powerMeasurement,
+        lastAtMs: this.options.clock.now(),
+        resubscribed: false,
+      });
     }
 
     if (controlPoint) {
@@ -356,6 +401,7 @@ export class WebBluetoothTrainer implements Trainer {
         this.options.clock,
         this.options.controlTimeoutMs,
         (level, message) => this.log(level, message),
+        () => this.link.forceReconnect("the control point stopped answering"),
       );
       await this.subscribe(controlPoint, "controlPointResponse", (_decoded, view) => control.handleIndication(view));
       this.control = control;
@@ -384,8 +430,15 @@ export class WebBluetoothTrainer implements Trainer {
     this.emitter.emit("diagnostic", { type: "changed" });
 
     // Targets sent before Request Control succeeds are ignored, so take
-    // control as part of connecting.
-    if (this.control) await this.requestControl();
+    // control as part of connecting. A denial (another app has control) still
+    // connects, for data; a control point that never answers fails the attempt.
+    if (this.control) {
+      const granted = await this.acquireControl();
+      if (this.control.desynchronized) {
+        throw new Error(server.connected ? "The control point did not answer Request Control." : "The link dropped during setup");
+      }
+      if (!granted) this.log("error", "Another app has control of the trainer. Close it, then press Retry.");
+    }
   }
 
   private async readDecoded<N extends CharacteristicName>(
@@ -450,8 +503,7 @@ export class WebBluetoothTrainer implements Trainer {
     this.wahoo = null;
     this.controlRequest = null;
     this.reclaimedAfterLoss = false;
-    this.lastDataAtMs = null;
-    this.resubscribed = false;
+    this.dataStreams.clear();
     this.previousCrank = null;
     this.cyclingPowerCadence = undefined;
     this.lastCadenceRpm = undefined;
@@ -462,9 +514,19 @@ export class WebBluetoothTrainer implements Trainer {
   }
 
   private handleStatus(status: TrainerStatus): void {
+    const previous = this.previousStatus;
+    this.previousStatus = status;
+    if (status === "reconnecting") {
+      this.awaitingPostReconnectTarget = true;
+      this.postReconnectTarget = null;
+    }
     this.emitter.emit("status", status);
     this.emitter.emit("diagnostic", { type: "changed" });
     if (status !== "connected") return;
+    if (previous !== "reconnecting") this.awaitingPostReconnectTarget = false;
+    // Silence is measured from now: setup may have taken a while.
+    const now = this.options.clock.now();
+    for (const stream of this.dataStreams.values()) stream.lastAtMs = now;
     this.startWatchdog();
     // After a reconnect the trainer has forgotten the target.
     if (this.lastTargetWatts !== null && this.ergEnabled) void this.setTargetPower(this.lastTargetWatts);
@@ -477,6 +539,15 @@ export class WebBluetoothTrainer implements Trainer {
     if (this.info.controlState === controlState) return;
     this.info = { ...this.info, controlState };
     this.emitter.emit("diagnostic", { type: "changed" });
+  }
+
+  // One Request Control at a time; concurrent callers share it.
+  private acquireControl(): Promise<boolean> {
+    if (!this.control) return Promise.resolve(false);
+    this.controlRequest ??= this.doRequestControl().finally(() => {
+      this.controlRequest = null;
+    });
+    return this.controlRequest;
   }
 
   private async doRequestControl(): Promise<boolean> {
@@ -494,14 +565,28 @@ export class WebBluetoothTrainer implements Trainer {
     return true;
   }
 
+  // Waits for a Request Control already in flight, or asks for control when
+  // none was asked for on this connection. After a denial or a loss it does not
+  // ask again by itself: the rider closes the other app and presses Retry.
   private async ensureControl(): Promise<boolean> {
-    return this.info.controlState === "granted" || (await this.requestControl());
+    if (this.controlRequest) return this.controlRequest;
+    const state = this.info.controlState;
+    if (state === "granted") return true;
+    if (state === "denied" || state === "lost") return false;
+    return this.acquireControl();
   }
 
-  private async writeFtmsTarget(watts: number, clamped: boolean, isRetry: boolean): Promise<TargetPowerResult> {
+  private async writeFtmsTarget(
+    watts: number,
+    clamped: boolean,
+    generation: number,
+    isRetry: boolean,
+  ): Promise<TargetPowerResult> {
     const control = this.control;
     if (!control) return { status: "rejected", reason: "notConnected" };
-    if (!(await this.ensureControl())) return { status: "rejected", reason: "controlNotPermitted" };
+    const granted = await this.ensureControl();
+    if (generation !== this.targetGeneration) return { status: "superseded" };
+    if (!granted) return { status: "rejected", reason: "controlNotPermitted" };
 
     const outcome = await control.setTargetPower(watts);
     this.logOutcome(`Set Target Power ${watts} W`, outcome);
@@ -521,7 +606,8 @@ export class WebBluetoothTrainer implements Trainer {
         return { status: "applied", watts, clamped };
       case "controlNotPermitted":
         this.setControlState("lost");
-        if (!isRetry && (await this.requestControl())) return this.writeFtmsTarget(watts, clamped, true);
+        if (!isRetry && (await this.acquireControl())) return this.writeFtmsTarget(watts, clamped, generation, true);
+        if (generation !== this.targetGeneration) return { status: "superseded" };
         return { status: "rejected", reason: "controlNotPermitted" };
       case "operationFailed":
         // A KICKR refuses targets while the flywheel is stopped: retry once the
@@ -547,9 +633,7 @@ export class WebBluetoothTrainer implements Trainer {
         }
         this.reclaimedAfterLoss = true;
         this.log("warn", "Trainer reports control permission lost; requesting control again once.");
-        void this.requestControl().then((granted) => {
-          if (granted && this.lastTargetWatts !== null && this.ergEnabled) void this.setTargetPower(this.lastTargetWatts);
-        });
+        void this.requestControl();
         return;
       case "targetPowerChanged":
         this.log("info", `Trainer confirms target power ${status.watts} W.`);
@@ -576,14 +660,16 @@ export class WebBluetoothTrainer implements Trainer {
 
   // Data ------------------------------------------------------------------------
 
-  private markData(atMs: number): void {
-    this.lastDataAtMs = atMs;
-    this.resubscribed = false;
+  private markData(stream: string, atMs: number): void {
+    const entry = this.dataStreams.get(stream);
+    if (!entry) return;
+    entry.lastAtMs = atMs;
+    entry.resubscribed = false;
   }
 
   private handleIndoorBikeData(data: IndoorBikeData): void {
     const atMs = this.options.clock.now();
-    this.markData(atMs);
+    this.markData("indoorBikeData", atMs);
     this.lastIndoorBikeDataAtMs = atMs;
     this.emitSample(atMs, data.powerWatts, data.cadenceRpm, data.heartRateBpm);
   }
@@ -609,7 +695,7 @@ export class WebBluetoothTrainer implements Trainer {
   // so one trainer never counts as two power sources.
   private handlePowerMeasurement(data: CyclingPowerMeasurement): void {
     const atMs = this.options.clock.now();
-    this.markData(atMs);
+    this.markData("cyclingPowerMeasurement", atMs);
     if (atMs - this.lastIndoorBikeDataAtMs <= this.options.staleResubscribeMs) return;
     this.emitSample(atMs, data.powerWatts, data.crank ? this.cyclingPowerCadence : undefined, undefined);
   }
@@ -648,25 +734,35 @@ export class WebBluetoothTrainer implements Trainer {
     this.watchdog = null;
   }
 
+  // Every notifying data characteristic is expected to notify: a stream
+  // silent for staleResubscribeMs gets its notifications restarted, and when
+  // all of them have been silent for staleReconnectMs the link is rebuilt. One
+  // stream stopping while another flows only restarts that stream.
   private checkSilence(): void {
-    // Armed only once data has flowed on this connection.
-    if (this.status !== "connected" || this.lastDataAtMs === null) return;
-    const silentMs = this.options.clock.now() - this.lastDataAtMs;
-    if (silentMs >= this.options.staleReconnectMs) {
-      this.link.forceReconnect(`no trainer data for ${Math.round(silentMs / 1000)} s`);
+    if (this.status !== "connected" || this.dataStreams.size === 0) return;
+    const now = this.options.clock.now();
+    const streams = [...this.dataStreams.values()];
+    const newestAgeMs = Math.min(...streams.map((stream) => now - stream.lastAtMs));
+    if (newestAgeMs >= this.options.staleReconnectMs) {
+      this.link.forceReconnect(`no trainer data for ${Math.round(newestAgeMs / 1000)} s`);
       return;
     }
-    if (silentMs >= this.options.staleResubscribeMs && !this.resubscribed) {
-      this.resubscribed = true;
-      this.log("warn", `No trainer data for ${Math.round(silentMs / 1000)} s; restarting notifications.`);
-      for (const uuid of [Characteristics.indoorBikeData, Characteristics.cyclingPowerMeasurement]) {
-        const characteristic = this.characteristics.get(fullUuid(uuid));
-        if (!characteristic) continue;
-        characteristic
-          .stopNotifications()
-          .then(() => characteristic.startNotifications())
-          .catch((error: unknown) => this.log("warn", `Restarting notifications failed: ${errorMessage(error)}`));
+    const silent = streams.filter((stream) => now - stream.lastAtMs >= this.options.staleResubscribeMs);
+    const due = silent.filter((stream) => !stream.resubscribed);
+    if (due.length === 0) return;
+    if (silent.length === streams.length) {
+      this.log("warn", `No trainer data for ${Math.round(newestAgeMs / 1000)} s; restarting notifications.`);
+    } else {
+      for (const stream of due) {
+        this.log("warn", `No ${stream.label} for ${Math.round((now - stream.lastAtMs) / 1000)} s; restarting its notifications.`);
       }
+    }
+    for (const stream of due) {
+      stream.resubscribed = true;
+      stream.characteristic
+        .stopNotifications()
+        .then(() => stream.characteristic.startNotifications())
+        .catch((error: unknown) => this.log("warn", `Restarting ${stream.label} notifications failed: ${errorMessage(error)}`));
     }
   }
 

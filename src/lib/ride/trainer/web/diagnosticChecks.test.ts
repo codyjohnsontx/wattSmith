@@ -20,6 +20,7 @@ const diagnostics: TrainerDiagnostics = {
   controlPath: "ftms",
   controlState: "granted",
   reconnectCount: 0,
+  postReconnectTarget: null,
 };
 
 const base: DiagnosticSnapshot = {
@@ -31,6 +32,7 @@ const base: DiagnosticSnapshot = {
   cyclingPower: { atMs: 99_600, powerWatts: 150, cadenceRpm: 88, recentCount: 5, averagePowerWatts: 150 },
   heartRate: null,
   targetTests: [],
+  sessionId: 0,
   gaveUp: false,
   lastReconnectMs: null,
   controlLostEvents: 0,
@@ -38,6 +40,17 @@ const base: DiagnosticSnapshot = {
 };
 
 const step = (snapshot: DiagnosticSnapshot, n: number) => evaluateChecks(snapshot).find((c) => c.step === n)!;
+
+// A passing test at `watts`, sent at `sentAtMs` in `sessionId`.
+function passing(watts: number, sentAtMs: number, sessionId = 1): TargetTest {
+  let test: TargetTest = {
+    ...newTargetTest(watts, sentAtMs, sessionId),
+    result: { status: "applied", watts, clamped: false },
+    latencyMs: 80,
+  };
+  for (let i = 1; i <= 4; i += 1) test = trackTargetPower(test, watts, sentAtMs + i * 1000);
+  return test;
+}
 
 // A test whose power trace is `watts[i]` at one sample per second after a
 // response that arrived in 80 ms.
@@ -80,7 +93,7 @@ describe("evaluateChecks", () => {
   it("passes the automatic steps on a healthy FTMS trainer", () => {
     const snapshot: DiagnosticSnapshot = {
       ...base,
-      targetTests: [followed(150, [140, 150, 150, 150]), followed(250, [240, 250, 250, 250])],
+      targetTests: [passing(150, 1000, 0), passing(250, 6000, 0)],
     };
     const states = Object.fromEntries(evaluateChecks(snapshot).map((c) => [c.step, c.state]));
     expect(states).toEqual({ 1: "pass", 2: "pass", 3: "pass", 4: "pass", 5: "pass", 6: "manual", 7: "manual", 8: "manual", 9: "waiting", 10: "manual" });
@@ -133,21 +146,14 @@ describe("evaluateChecks", () => {
     expect(addRecentSample(history, { atMs: 9000 }).averagePowerWatts).toBeUndefined();
   });
 
-  it("passes the connect step once connected, including while reconnecting", () => {
-    expect(step(base, 1).state).toBe("pass");
-    expect(step({ ...base, trainerStatus: "reconnecting" }, 1).state).toBe("pass");
-    expect(step({ ...base, trainerStatus: "connecting" }, 1).state).toBe("waiting");
-    expect(step({ ...base, trainerStatus: "disconnected" }, 1).state).toBe("waiting");
-  });
-
   it("tracks the reconnect step", () => {
     expect(step({ ...base, trainerStatus: "reconnecting" }, 8).state).toBe("waiting");
     const recovered = { ...base, diagnostics: { ...diagnostics, reconnectCount: 1 }, lastReconnectMs: 12_400 };
     expect(step(recovered, 8)).toEqual({
       step: 8,
       title: "Unplug and reconnect",
-      state: "pass",
-      detail: "Recovered 1 time(s) without the chooser, last in 12.4 s.",
+      state: "waiting",
+      detail: "Recovered 1 time(s) without the chooser, last in 12.4 s. Set a target to prove control came back too.",
     });
     expect(step({ ...base, trainerStatus: "disconnected", gaveUp: true }, 8).state).toBe("fail");
   });
@@ -157,5 +163,53 @@ describe("evaluateChecks", () => {
     expect(step({ ...base, heartRate: hr }, 9).state).toBe("pass");
     expect(step({ ...base, heartRate: { ...hr, firstSampleAtMs: null } }, 9).state).toBe("fail");
     expect(step({ ...base, heartRate: { ...hr, connectedAtMs: 98_000, firstSampleAtMs: null } }, 9).state).toBe("waiting");
+  });
+});
+
+// Reproductions from the second-opinion review of PR 20 (Codex, finding 5).
+describe("checklist rows prove what they claim", () => {
+  it("step 5 needs 150 W before 250 W, not the reverse", () => {
+    const reversed = { ...base, sessionId: 1, targetTests: [passing(250, 1000), passing(150, 5000)] };
+    expect(step(reversed, 5).state).toBe("waiting");
+    expect(step(reversed, 5).detail).toContain("Set 150 W first, then 250 W");
+    const ordered = { ...base, sessionId: 1, targetTests: [passing(250, 1000), passing(150, 5000), passing(250, 10_000)] };
+    expect(step(ordered, 5).state).toBe("pass");
+  });
+
+  it("step 5 does not combine tests from different connection sessions", () => {
+    const split = { ...base, sessionId: 2, targetTests: [passing(150, 1000, 1), passing(250, 20_000, 2)] };
+    expect(step(split, 5).state).toBe("waiting");
+    // A pair within one earlier session stays proven after a reconnect.
+    const earlier = { ...base, sessionId: 2, targetTests: [passing(150, 1000, 1), passing(250, 6000, 1)] };
+    expect(step(earlier, 5).state).toBe("pass");
+  });
+
+  it("step 8 needs a successful target after the reconnect", () => {
+    const reconnected = { ...base, diagnostics: { ...diagnostics, reconnectCount: 1 }, lastReconnectMs: 12_400, targetTests: [] };
+    expect(step(reconnected, 8).state).toBe("waiting");
+    expect(step(reconnected, 8).detail).toContain("Set a target");
+    const refused = {
+      ...reconnected,
+      diagnostics: {
+        ...reconnected.diagnostics,
+        postReconnectTarget: { watts: 150, result: { status: "rejected" as const, reason: "controlNotPermitted" as const } },
+      },
+    };
+    expect(step(refused, 8).state).toBe("fail");
+    const proven = {
+      ...reconnected,
+      diagnostics: {
+        ...reconnected.diagnostics,
+        postReconnectTarget: { watts: 150, result: { status: "applied" as const, watts: 150, clamped: false } },
+      },
+    };
+    expect(step(proven, 8)).toMatchObject({ state: "pass", detail: expect.stringContaining("150 W accepted after reconnecting") });
+  });
+
+  it("step 1 reflects the current connection, not a past one", () => {
+    expect(step({ ...base, trainerStatus: "reconnecting" }, 1).state).toBe("waiting");
+    expect(step({ ...base, trainerStatus: "connecting" }, 1).state).toBe("waiting");
+    expect(step({ ...base, trainerStatus: "disconnected" }, 1).state).toBe("waiting");
+    expect(step(base, 1).state).toBe("pass");
   });
 });

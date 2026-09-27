@@ -11,8 +11,8 @@ import {
   requestTrainerDevice,
 } from "@/lib/ride/trainer/web/bluetooth";
 import type { BluetoothDeviceLike, WebBluetoothSupport } from "@/lib/ride/trainer/web/bluetooth";
+import { CaptureRecorder, captureFileName } from "@/lib/ride/trainer/web/capture";
 import { browserClock } from "@/lib/ride/trainer/web/clock";
-import { characteristicDecoders } from "@/lib/ride/trainer/web/codec";
 import type { CyclingPowerMeasurement, FitnessMachineStatus, HeartRateMeasurement, IndoorBikeData } from "@/lib/ride/trainer/web/codec";
 import {
   addRecentSample,
@@ -39,12 +39,6 @@ interface LogEntry {
   level: "info" | "warn" | "error" | "raw";
   source: "trainer" | "heart rate" | "page";
   message: string;
-}
-
-interface CaptureEntry {
-  characteristic: string;
-  hex: string;
-  tMs: number;
 }
 
 const TARGET_PRESETS = [150, 250, 100, 30];
@@ -165,6 +159,10 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
   const [nowMs, setNowMs] = useState(0);
   const [fakePoweredOn, setFakePoweredOn] = useState(true);
   const [targetWatts, setTargetWatts] = useState<number | null>(null);
+  // Every "connected" (first connect or reconnect) starts a new session, so
+  // checklist evidence is never stitched together across links.
+  const [sessionId, setSessionId] = useState(0);
+  const sessionRef = useRef(0);
 
   const trainerRef = useRef<WebBluetoothTrainer | null>(null);
   const trainerUnsubscribe = useRef<(() => void) | null>(null);
@@ -173,7 +171,7 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
   const fakeDeviceRef = useRef<FakeFtmsDevice | null>(null);
   const logId = useRef(0);
   const showRawRef = useRef(showRaw);
-  const captureRef = useRef<{ startedAtMs: number; entries: CaptureEntry[] } | null>(null);
+  const captureRef = useRef<CaptureRecorder | null>(null);
   const recentRef = useRef<Record<string, PowerSample[]>>({});
   const reconnectStartedAt = useRef<number | null>(null);
 
@@ -219,10 +217,7 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
       } else if (event.error) {
         addLog(source, "warn", `Could not decode ${characteristic} ${hex}: ${event.error}`, atMs);
       }
-      const capture = captureRef.current;
-      if (capture && characteristic in characteristicDecoders) {
-        capture.entries.push({ characteristic, hex, tMs: Math.round(atMs - capture.startedAtMs) });
-      }
+      captureRef.current?.add(event);
       if (event.error) return;
 
       if (characteristic === "indoorBikeData") {
@@ -267,6 +262,7 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
       const offs = [
         trainer.on("status", (status) => {
           setTrainerStatus(status);
+          if (status === "connected") setSessionId(++sessionRef.current);
           const now = browserClock.now();
           if (status === "reconnecting") {
             reconnectStartedAt.current = now;
@@ -413,7 +409,7 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
     const trainer = trainerRef.current;
     if (!trainer || !Number.isFinite(watts)) return;
     const sentAtMs = browserClock.now();
-    setTargetTests((tests) => [...tests, newTargetTest(watts, sentAtMs)]);
+    setTargetTests((tests) => [...tests, newTargetTest(watts, sentAtMs, sessionRef.current)]);
     const result = await trainer.setTargetPower(watts);
     const latencyMs = browserClock.now() - sentAtMs;
     setTargetWatts(trainer.targetWatts);
@@ -446,7 +442,7 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
   }
 
   function startCapture() {
-    captureRef.current = { startedAtMs: browserClock.now(), entries: [] };
+    captureRef.current = new CaptureRecorder(browserClock.now());
     setCaptureEndsAt(browserClock.now() + CAPTURE_MS);
     addLog("page", "info", "Recording 30 s of raw notifications. Pedal, and set a target or two.");
     window.setTimeout(() => {
@@ -455,21 +451,19 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
       setCaptureEndsAt(null);
       if (!capture) return;
       const info = trainerRef.current?.diagnostics.deviceInformation;
-      const firmware = (info?.firmware ?? "unknown").replace(/[^0-9A-Za-z.-]+/g, "_");
-      const file = {
+      const file = capture.toFile({
         device: trainerRef.current?.name ?? null,
         deviceInformation: info ?? null,
         recordedAt: new Date().toISOString(),
         userAgent: navigator.userAgent,
-        notifications: capture.entries,
-      };
+      });
       const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: "application/json" }));
       const link = document.createElement("a");
       link.href = url;
-      link.download = `kickr-core-${firmware}.json`;
+      link.download = captureFileName(info?.firmware);
       link.click();
       URL.revokeObjectURL(url);
-      addLog("page", "info", `Saved ${capture.entries.length} notifications as ${link.download}.`);
+      addLog("page", "info", `Saved ${capture.notifications.length} notifications as ${link.download}.`);
     }, CAPTURE_MS);
   }
 
@@ -491,6 +485,7 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
     cyclingPower,
     heartRate,
     targetTests,
+    sessionId,
     gaveUp,
     lastReconnectMs,
     controlLostEvents,
@@ -498,7 +493,11 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
   };
   const checks = evaluateChecks(snapshot);
   const connected = trainerStatus === "connected";
-  const canControl = connected && diagnostics?.controlPath !== "none";
+  const canControl = connected && diagnostics !== null && diagnostics.controlPath !== "none";
+  // Targets need control actually held; the Wahoo fallback has no control step.
+  const canSetTargets =
+    canControl && (diagnostics.controlPath === "wahoo" || diagnostics.controlState === "granted");
+  const controlBlocked = connected && (diagnostics?.controlState === "lost" || diagnostics?.controlState === "denied");
   const latestTarget = targetTests.at(-1);
   const powerGap =
     indoorBikeData?.averagePowerWatts !== undefined && cyclingPower?.averagePowerWatts !== undefined
@@ -557,9 +556,14 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
           </button>
         </div>
       ) : null}
-      {diagnostics?.controlState === "lost" ? (
+      {controlBlocked ? (
         <div role="alert" className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-rose-400/40 bg-rose-400/10 p-3 text-sm text-rose-100">
-          <span className="font-semibold">Another app took control of the trainer.</span>
+          <span>
+            <span className="font-semibold">
+              {diagnostics?.controlState === "denied" ? "Another app has control of the trainer." : "Another app took control of the trainer."}
+            </span>{" "}
+            Target power is unavailable. Close Zwift, the Wahoo app or any head unit in control, then press Retry.
+          </span>
           <button type="button" className={buttonClass} onClick={() => void requestControl()}>
             Retry
           </button>
@@ -677,7 +681,7 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
                 Request control
               </button>
               {TARGET_PRESETS.map((watts) => (
-                <button key={watts} type="button" className={buttonClass} disabled={!canControl} onClick={() => void setTarget(watts)}>
+                <button key={watts} type="button" className={buttonClass} disabled={!canSetTargets} onClick={() => void setTarget(watts)}>
                   Set {watts} W
                 </button>
               ))}
@@ -701,14 +705,14 @@ export function TrainerDiagnostics({ fake }: { fake: boolean }) {
                   onChange={(event) => setCustomWatts(event.target.value)}
                   className="h-10 w-24 border border-slate-700 bg-slate-950 px-3 text-white"
                 />
-                <button type="submit" className={buttonClass} disabled={!canControl || customWatts === ""}>
+                <button type="submit" className={buttonClass} disabled={!canSetTargets || customWatts === ""}>
                   Set
                 </button>
               </form>
-              <button type="button" className={buttonClass} disabled={!canControl} onClick={() => void ergOff()}>
+              <button type="button" className={buttonClass} disabled={!canSetTargets} onClick={() => void ergOff()}>
                 ERG off
               </button>
-              <button type="button" className={buttonClass} disabled={!canControl} onClick={() => void ergOn()}>
+              <button type="button" className={buttonClass} disabled={!canSetTargets} onClick={() => void ergOn()}>
                 ERG on
               </button>
             </div>

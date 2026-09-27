@@ -19,6 +19,8 @@ export interface CheckResult {
 export interface TargetTest {
   watts: number;
   sentAtMs: number;
+  // The connection session the target was set in; a reconnect starts a new one.
+  sessionId: number;
   result: TargetPowerResult | null;
   // Time from the write to the control point response.
   latencyMs: number | null;
@@ -55,6 +57,8 @@ export interface DiagnosticSnapshot {
   cyclingPower: LiveReading | null;
   heartRate: { status: TrainerStatus; connectedAtMs: number | null; firstSampleAtMs: number | null; bpm: number | null } | null;
   targetTests: TargetTest[];
+  // The current connection session (see TargetTest.sessionId).
+  sessionId: number;
   gaveUp: boolean;
   lastReconnectMs: number | null;
   controlLostEvents: number;
@@ -91,8 +95,8 @@ export function addRecentSample(
   return { history: recent, recentCount: recent.length, averagePowerWatts };
 }
 
-export function newTargetTest(watts: number, sentAtMs: number): TargetTest {
-  return { watts, sentAtMs, result: null, latencyMs: null, settledAtMs: null, inBandSinceMs: null, startWatts: null, overshootWatts: 0 };
+export function newTargetTest(watts: number, sentAtMs: number, sessionId = 0): TargetTest {
+  return { watts, sentAtMs, sessionId, result: null, latencyMs: null, settledAtMs: null, inBandSinceMs: null, startWatts: null, overshootWatts: 0 };
 }
 
 // Folds one power reading into the latest target test. Overshoot is tracked
@@ -159,8 +163,12 @@ export function evaluateChecks(s: DiagnosticSnapshot): CheckResult[] {
   results.push({
     step: 1,
     title: "Connect the trainer",
-    state: connected || s.trainerStatus === "reconnecting" ? "pass" : "waiting",
-    detail: s.deviceName ? `Picked "${s.deviceName}"` : "Press Connect trainer and pick the KICKR in the chooser.",
+    state: connected ? "pass" : "waiting",
+    detail: !s.deviceName
+      ? "Press Connect trainer and pick the KICKR in the chooser."
+      : connected
+        ? `Connected to "${s.deviceName}"`
+        : `Picked "${s.deviceName}"; the link is ${s.trainerStatus ?? "disconnected"}.`,
   });
 
   if (!d || d.services.length === 0) {
@@ -207,22 +215,7 @@ export function evaluateChecks(s: DiagnosticSnapshot): CheckResult[] {
     });
   }
 
-  const byWatts = (watts: number) => [...s.targetTests].reverse().find((t) => t.watts === watts);
-  const followed = [150, 250].map((watts) => {
-    const test = byWatts(watts);
-    return { watts, verdict: test ? judgeTargetTest(test, s.nowMs) : null };
-  });
-  const step5State: CheckState = followed.some((f) => f.verdict?.state === "fail")
-    ? "fail"
-    : followed.every((f) => f.verdict?.state === "pass")
-      ? "pass"
-      : "waiting";
-  results.push({
-    step: 5,
-    title: "Trainer follows 150 W then 250 W",
-    state: step5State,
-    detail: followed.map((f) => `${f.watts} W: ${f.verdict ? `${f.verdict.state}, ${f.verdict.summary}` : "not set yet"}`).join(" | "),
-  });
+  results.push(evaluateTargetOrder(s));
 
   results.push({
     step: 6,
@@ -238,18 +231,7 @@ export function evaluateChecks(s: DiagnosticSnapshot): CheckResult[] {
     detail: `Wait 60 s without pedaling. Fitness Machine Status events so far: ${s.machineStatusEvents}; the link is ${s.trainerStatus ?? "not connected"}.`,
   });
 
-  results.push({
-    step: 8,
-    title: "Unplug and reconnect",
-    state: s.gaveUp ? "fail" : d && d.reconnectCount > 0 && connected ? "pass" : s.trainerStatus === "reconnecting" ? "waiting" : "manual",
-    detail: s.gaveUp
-      ? "Gave up after 60 s without the trainer. Plug it back in and press Reconnect."
-      : d && d.reconnectCount > 0 && connected
-        ? `Recovered ${d.reconnectCount} time(s) without the chooser${s.lastReconnectMs !== null ? `, last in ${(s.lastReconnectMs / 1000).toFixed(1)} s` : ""}.`
-        : s.trainerStatus === "reconnecting"
-          ? "Reconnecting: plug the trainer back in."
-          : "Unplug the trainer for 10 s, then plug it back in.",
-  });
+  results.push(evaluateReconnect(s));
 
   const hr = s.heartRate;
   results.push({
@@ -279,4 +261,63 @@ export function evaluateChecks(s: DiagnosticSnapshot): CheckResult[] {
   });
 
   return results;
+}
+
+// Step 5: a passing 150 W test followed by a later passing 250 W test, both in
+// one connection session. A proven pair stays proven after a later reconnect.
+function evaluateTargetOrder(s: DiagnosticSnapshot): CheckResult {
+  const title = "Trainer follows 150 W then 250 W";
+  const passes = (test: TargetTest) => judgeTargetTest(test, s.nowMs).state === "pass";
+  for (const first of s.targetTests) {
+    if (first.watts !== 150 || !passes(first)) continue;
+    const second = s.targetTests.find(
+      (test) => test.watts === 250 && test.sessionId === first.sessionId && test.sentAtMs > first.sentAtMs && passes(test),
+    );
+    if (second) {
+      const summary = (test: TargetTest) => judgeTargetTest(test, s.nowMs).summary;
+      return { step: 5, title, state: "pass", detail: `150 W: ${summary(first)} | then 250 W: ${summary(second)}` };
+    }
+  }
+
+  const current = s.targetTests.filter((test) => test.sessionId === s.sessionId);
+  const latest = (watts: number) => [...current].reverse().find((test) => test.watts === watts);
+  const verdicts = [150, 250].map((watts) => {
+    const test = latest(watts);
+    return { watts, test, verdict: test ? judgeTargetTest(test, s.nowMs) : null };
+  });
+  const detail = verdicts.map((v) => `${v.watts} W: ${v.verdict ? `${v.verdict.state}, ${v.verdict.summary}` : "not set yet"}`);
+  const [low, high] = verdicts;
+  if (high.verdict?.state === "pass" && (!low.test || low.test.sentAtMs > high.test!.sentAtMs || low.verdict?.state !== "pass")) {
+    detail.push("Set 150 W first, then 250 W");
+  }
+  const state: CheckState = verdicts.some((v) => v.verdict?.state === "fail") ? "fail" : "waiting";
+  return { step: 5, title, state, detail: detail.join(" | ") };
+}
+
+// Step 8: the link came back without the chooser AND a Set Target Power
+// succeeded afterwards, so control came back too, not just the link.
+function evaluateReconnect(s: DiagnosticSnapshot): CheckResult {
+  const title = "Unplug and reconnect";
+  const d = s.diagnostics;
+  if (s.gaveUp) {
+    return { step: 8, title, state: "fail", detail: "Gave up after 60 s without the trainer. Plug it back in and press Reconnect." };
+  }
+  if (s.trainerStatus === "reconnecting") {
+    return { step: 8, title, state: "waiting", detail: "Reconnecting: plug the trainer back in." };
+  }
+  if (!d || d.reconnectCount === 0 || s.trainerStatus !== "connected") {
+    return { step: 8, title, state: "manual", detail: "Set 150 W, then unplug the trainer for 10 s and plug it back in." };
+  }
+  const recovered = `Recovered ${d.reconnectCount} time(s) without the chooser${
+    s.lastReconnectMs !== null ? `, last in ${(s.lastReconnectMs / 1000).toFixed(1)} s` : ""
+  }`;
+  const target = d.postReconnectTarget;
+  if (!target) {
+    return { step: 8, title, state: "waiting", detail: `${recovered}. Set a target to prove control came back too.` };
+  }
+  if (target.result.status === "applied") {
+    return { step: 8, title, state: "pass", detail: `${recovered}; ${target.watts} W accepted after reconnecting.` };
+  }
+  const reason = target.result.status === "rejected" ? target.result.reason : target.result.status;
+  return { step: 8, title, state: "fail", detail: `${recovered}, but Set Target Power ${target.watts} W after reconnecting failed: ${reason}.` };
 }

@@ -1,11 +1,38 @@
 {
-  "description": "Byte vectors hand-encoded from the Bluetooth SIG layouts (FTMS v1.0 sections 4.3, 4.9, 4.14, 4.16, 4.17; GSS YAML for Indoor Bike Data, Cycling Power Measurement, Heart Rate Measurement, Supported Power Range). Synthetic: real KICKR CORE captures from the diagnostics page go next to this file as kickr-core-<firmware>.json.",
+  "description": "Byte vectors hand-encoded from the Bluetooth SIG layouts; each characteristic or encoder family names its exact source document, section and table under provenance. Synthetic: they share one reading of the specification with the codec, so a real KICKR CORE capture recorded on the diagnostics page is committed next to this file as kickr-core-<firmware>.json and decoded too.",
+  "provenance": {
+    "decode": {
+      "indoorBikeData": "Bluetooth SIG Fitness Machine Service 1.0 (FTMS_v1.0) section 4.9 Indoor Bike Data, Table 4.10 (flag bits and field presence); field types, units and resolutions from GATT Specification Supplement YAML, bitbucket.org/bluetooth-SIG/public gss/ (revision of 2026-02-05), org.bluetooth.characteristic.indoor_bike_data. Resistance Level is sint16 in the characteristic definition published with FTMS 1.0 and uint8 in the current GSS; both layouts have a vector.",
+      "cyclingPowerMeasurement": "GATT Specification Supplement YAML, bitbucket.org/bluetooth-SIG/public gss/ (revision of 2026-02-05), org.bluetooth.characteristic.cycling_power_measurement: structure table, Flags field, Wheel Revolution Data and Crank Revolution Data field tables. Bluetooth SIG Cycling Power Service 1.1.",
+      "cyclingPowerFeature": "GATT Specification Supplement YAML, bitbucket.org/bluetooth-SIG/public gss/ (revision of 2026-02-05), org.bluetooth.characteristic.cycling_power_feature: Cycling Power Feature bit table (bit 2 wheel, bit 3 crank revolution data).",
+      "heartRateMeasurement": "GATT Specification Supplement YAML, bitbucket.org/bluetooth-SIG/public gss/ (revision of 2026-02-05), org.bluetooth.characteristic.heart_rate_measurement: structure table, Flags field and RR-Interval field. Bluetooth SIG Heart Rate Service 1.0.",
+      "fitnessMachineFeature": "Bluetooth SIG Fitness Machine Service 1.0 (FTMS_v1.0) section 4.3: Table 4.2 (structure), Table 4.3 (Fitness Machine Features bits), Table 4.4 (Target Setting Features bits).",
+      "supportedPowerRange": "Bluetooth SIG Fitness Machine Service 1.0 (FTMS_v1.0) section 4.14; GATT Specification Supplement YAML, bitbucket.org/bluetooth-SIG/public gss/ (revision of 2026-02-05), org.bluetooth.characteristic.supported_power_range.",
+      "controlPointResponse": "Bluetooth SIG Fitness Machine Service 1.0 (FTMS_v1.0) section 4.16.2.22: Table 4.23 (response indication format) and Table 4.24 (result codes).",
+      "fitnessMachineStatus": "Bluetooth SIG Fitness Machine Service 1.0 (FTMS_v1.0) section 4.17: Table 4.26 (status op codes and parameters), Table 4.16 (control information), Table 4.27 (spin down status)."
+    },
+    "encode": {
+      "requestControl": "Bluetooth SIG Fitness Machine Service 1.0 (FTMS_v1.0) section 4.16.1, Table 4.15, op code 0x00.",
+      "reset": "Bluetooth SIG Fitness Machine Service 1.0 (FTMS_v1.0) section 4.16.1, Table 4.15, op code 0x01.",
+      "startOrResume": "Bluetooth SIG Fitness Machine Service 1.0 (FTMS_v1.0) section 4.16.1, Table 4.15, op code 0x07.",
+      "stopOrPause": "Bluetooth SIG Fitness Machine Service 1.0 (FTMS_v1.0) section 4.16.1, Table 4.15, op code 0x08; parameter values from section 4.16.2.9, Table 4.16.",
+      "setTargetPower": "Bluetooth SIG Fitness Machine Service 1.0 (FTMS_v1.0) section 4.16.1, Table 4.15, op code 0x05 with a SINT16 watts parameter at 1 W resolution.",
+      "setIndoorBikeSimulation": "Bluetooth SIG Fitness Machine Service 1.0 (FTMS_v1.0) section 4.16.1, Table 4.15, op code 0x11; parameter layout from section 4.16.2.18, Table 4.20.",
+      "wahooUnlock": "Not a SIG specification. Wahoo proprietary trainer characteristic a026e005-0a7d-4ab3-97fa-f1500f9feb8b as used by GoldenCheetah (src/Train/BT40Device.cpp) and qdomyos-zwift (src/devices/wahookickrsnapbike): op code 0x20, payload EE FC. Unverified on hardware.",
+      "wahooSetErg": "Not a SIG specification. Same sources as wahooUnlock: op code 0x42 with a uint16 little-endian watts target. Unverified on hardware."
+    }
+  },
   "decode": [
     {
       "name": "IBD: speed, cadence and power (typical trainer notification)",
       "characteristic": "indoorBikeData",
       "hex": "44 00 b8 0b b4 00 96 00",
-      "expected": { "moreData": false, "speedKmh": 30, "cadenceRpm": 90, "powerWatts": 150 }
+      "expected": {
+        "moreData": false,
+        "speedKmh": 30,
+        "cadenceRpm": 90,
+        "powerWatts": 150
+      }
     },
     {
       "name": "IBD: every field except resistance",
@@ -33,25 +60,41 @@
       "name": "IBD: More Data set, so no speed; negative power is sint16",
       "characteristic": "indoorBikeData",
       "hex": "41 00 fb ff",
-      "expected": { "moreData": true, "powerWatts": -5 }
+      "expected": {
+        "moreData": true,
+        "powerWatts": -5
+      }
     },
     {
       "name": "IBD: expended energy fields carrying the 'data not available' sentinels",
       "characteristic": "indoorBikeData",
       "hex": "00 01 00 00 ff ff ff ff ff",
-      "expected": { "moreData": false, "speedKmh": 0 }
+      "expected": {
+        "moreData": false,
+        "speedKmh": 0
+      }
     },
     {
       "name": "IBD: resistance level as sint16 (FTMS v1.0 layout)",
       "characteristic": "indoorBikeData",
       "hex": "60 00 d0 07 14 00 b4 00",
-      "expected": { "moreData": false, "speedKmh": 20, "resistanceLevel": 20, "powerWatts": 180 }
+      "expected": {
+        "moreData": false,
+        "speedKmh": 20,
+        "resistanceLevel": 20,
+        "powerWatts": 180
+      }
     },
     {
       "name": "IBD: resistance level as uint8 (current GSS layout)",
       "characteristic": "indoorBikeData",
       "hex": "60 00 d0 07 14 b4 00",
-      "expected": { "moreData": false, "speedKmh": 20, "resistanceLevel": 20, "powerWatts": 180 }
+      "expected": {
+        "moreData": false,
+        "speedKmh": 20,
+        "resistanceLevel": 20,
+        "powerWatts": 180
+      }
     },
     {
       "name": "IBD: truncated power field",
@@ -63,7 +106,9 @@
       "name": "CPM: power only",
       "characteristic": "cyclingPowerMeasurement",
       "hex": "00 00 c8 00",
-      "expected": { "powerWatts": 200 }
+      "expected": {
+        "powerWatts": 200
+      }
     },
     {
       "name": "CPM: wheel and crank revolution data (how the KICKR CORE reports speed and estimated cadence)",
@@ -71,8 +116,14 @@
       "hex": "30 00 d7 00 a0 86 01 00 00 10 f4 01 00 c8",
       "expected": {
         "powerWatts": 215,
-        "wheel": { "cumulativeRevolutions": 100000, "lastEventTime2048": 4096 },
-        "crank": { "cumulativeRevolutions": 500, "lastEventTime1024": 51200 }
+        "wheel": {
+          "cumulativeRevolutions": 100000,
+          "lastEventTime2048": 4096
+        },
+        "crank": {
+          "cumulativeRevolutions": 500,
+          "lastEventTime1024": 51200
+        }
       }
     },
     {
@@ -83,7 +134,10 @@
         "powerWatts": 300,
         "pedalPowerBalancePercent": 52,
         "accumulatedTorqueNm": 40,
-        "crank": { "cumulativeRevolutions": 65535, "lastEventTime1024": 1024 },
+        "crank": {
+          "cumulativeRevolutions": 65535,
+          "lastEventTime1024": 1024
+        },
         "accumulatedEnergyKj": 12
       }
     },
@@ -97,31 +151,54 @@
       "name": "CPS Feature: wheel and crank revolution data supported",
       "characteristic": "cyclingPowerFeature",
       "hex": "0c 00 00 00",
-      "expected": { "raw": 12, "wheelRevolutionData": true, "crankRevolutionData": true }
+      "expected": {
+        "raw": 12,
+        "wheelRevolutionData": true,
+        "crankRevolutionData": true
+      }
     },
     {
       "name": "CPS Feature: power only",
       "characteristic": "cyclingPowerFeature",
       "hex": "00 00 00 00",
-      "expected": { "raw": 0, "wheelRevolutionData": false, "crankRevolutionData": false }
+      "expected": {
+        "raw": 0,
+        "wheelRevolutionData": false,
+        "crankRevolutionData": false
+      }
     },
     {
       "name": "HRM: uint8 heart rate, no contact detection",
       "characteristic": "heartRateMeasurement",
       "hex": "00 48",
-      "expected": { "heartRateBpm": 72, "rrIntervalsMs": [] }
+      "expected": {
+        "heartRateBpm": 72,
+        "rrIntervalsMs": []
+      }
     },
     {
       "name": "HRM: uint16 heart rate, contact detected, energy expended, two RR intervals",
       "characteristic": "heartRateMeasurement",
       "hex": "1f 96 00 23 01 00 04 00 02",
-      "expected": { "heartRateBpm": 150, "sensorContact": true, "energyExpended": 291, "rrIntervalsMs": [1000, 500] }
+      "expected": {
+        "heartRateBpm": 150,
+        "sensorContact": true,
+        "energyExpended": 291,
+        "rrIntervalsMs": [
+          1000,
+          500
+        ]
+      }
     },
     {
       "name": "HRM: contact supported but not detected",
       "characteristic": "heartRateMeasurement",
       "hex": "04 3c",
-      "expected": { "heartRateBpm": 60, "sensorContact": false, "rrIntervalsMs": [] }
+      "expected": {
+        "heartRateBpm": 60,
+        "sensorContact": false,
+        "rrIntervalsMs": []
+      }
     },
     {
       "name": "HRM: odd RR-Interval byte count",
@@ -186,55 +263,103 @@
       "name": "Supported Power Range: 0-2000 W in 1 W steps",
       "characteristic": "supportedPowerRange",
       "hex": "00 00 d0 07 01 00",
-      "expected": { "minWatts": 0, "maxWatts": 2000, "incrementWatts": 1 }
+      "expected": {
+        "minWatts": 0,
+        "maxWatts": 2000,
+        "incrementWatts": 1
+      }
     },
     {
       "name": "Supported Power Range: signed minimum",
       "characteristic": "supportedPowerRange",
       "hex": "f6 ff e8 03 05 00",
-      "expected": { "minWatts": -10, "maxWatts": 1000, "incrementWatts": 5 }
+      "expected": {
+        "minWatts": -10,
+        "maxWatts": 1000,
+        "incrementWatts": 5
+      }
     },
     {
       "name": "Control Point: Request Control succeeded",
       "characteristic": "controlPointResponse",
       "hex": "80 00 01",
-      "expected": { "requestOpCode": 0, "resultCode": 1, "result": "success", "parameter": [] }
+      "expected": {
+        "requestOpCode": 0,
+        "resultCode": 1,
+        "result": "success",
+        "parameter": []
+      }
     },
     {
       "name": "Control Point: Set Target Power invalid parameter",
       "characteristic": "controlPointResponse",
       "hex": "80 05 03",
-      "expected": { "requestOpCode": 5, "resultCode": 3, "result": "invalidParameter", "parameter": [] }
+      "expected": {
+        "requestOpCode": 5,
+        "resultCode": 3,
+        "result": "invalidParameter",
+        "parameter": []
+      }
     },
     {
       "name": "Control Point: Set Target Power control not permitted",
       "characteristic": "controlPointResponse",
       "hex": "80 05 05",
-      "expected": { "requestOpCode": 5, "resultCode": 5, "result": "controlNotPermitted", "parameter": [] }
+      "expected": {
+        "requestOpCode": 5,
+        "resultCode": 5,
+        "result": "controlNotPermitted",
+        "parameter": []
+      }
     },
     {
       "name": "Control Point: Start or Resume operation failed",
       "characteristic": "controlPointResponse",
       "hex": "80 07 04",
-      "expected": { "requestOpCode": 7, "resultCode": 4, "result": "operationFailed", "parameter": [] }
+      "expected": {
+        "requestOpCode": 7,
+        "resultCode": 4,
+        "result": "operationFailed",
+        "parameter": []
+      }
     },
     {
       "name": "Control Point: Set Indoor Bike Simulation op code not supported",
       "characteristic": "controlPointResponse",
       "hex": "80 11 02",
-      "expected": { "requestOpCode": 17, "resultCode": 2, "result": "opCodeNotSupported", "parameter": [] }
+      "expected": {
+        "requestOpCode": 17,
+        "resultCode": 2,
+        "result": "opCodeNotSupported",
+        "parameter": []
+      }
     },
     {
       "name": "Control Point: Spin Down success carries a response parameter",
       "characteristic": "controlPointResponse",
       "hex": "80 13 01 e8 03 f4 01",
-      "expected": { "requestOpCode": 19, "resultCode": 1, "result": "success", "parameter": [232, 3, 244, 1] }
+      "expected": {
+        "requestOpCode": 19,
+        "resultCode": 1,
+        "result": "success",
+        "parameter": [
+          232,
+          3,
+          244,
+          1
+        ]
+      }
     },
     {
       "name": "Control Point: reserved result code",
       "characteristic": "controlPointResponse",
       "hex": "80 05 09",
-      "expected": { "requestOpCode": 5, "resultCode": 9, "result": "unknown", "parameter": [] }
+      "expected": {
+        "requestOpCode": 5,
+        "resultCode": 9,
+        "result": "unknown",
+        "parameter": []
+      }
     },
     {
       "name": "Control Point: a request echoed back is not a response",
@@ -246,43 +371,60 @@
       "name": "Status: control permission lost",
       "characteristic": "fitnessMachineStatus",
       "hex": "ff",
-      "expected": { "type": "controlPermissionLost" }
+      "expected": {
+        "type": "controlPermissionLost"
+      }
     },
     {
       "name": "Status: target power changed to 150 W",
       "characteristic": "fitnessMachineStatus",
       "hex": "08 96 00",
-      "expected": { "type": "targetPowerChanged", "watts": 150 }
+      "expected": {
+        "type": "targetPowerChanged",
+        "watts": 150
+      }
     },
     {
       "name": "Status: paused by the user",
       "characteristic": "fitnessMachineStatus",
       "hex": "02 02",
-      "expected": { "type": "stoppedOrPausedByUser", "action": "pause" }
+      "expected": {
+        "type": "stoppedOrPausedByUser",
+        "action": "pause"
+      }
     },
     {
       "name": "Status: started or resumed by the user",
       "characteristic": "fitnessMachineStatus",
       "hex": "04",
-      "expected": { "type": "startedOrResumedByUser" }
+      "expected": {
+        "type": "startedOrResumedByUser"
+      }
     },
     {
       "name": "Status: reset",
       "characteristic": "fitnessMachineStatus",
       "hex": "01",
-      "expected": { "type": "reset" }
+      "expected": {
+        "type": "reset"
+      }
     },
     {
       "name": "Status: stopped by safety key",
       "characteristic": "fitnessMachineStatus",
       "hex": "03",
-      "expected": { "type": "stoppedBySafetyKey" }
+      "expected": {
+        "type": "stoppedBySafetyKey"
+      }
     },
     {
       "name": "Status: target resistance level changed",
       "characteristic": "fitnessMachineStatus",
       "hex": "07 64",
-      "expected": { "type": "targetResistanceChanged", "level": 10 }
+      "expected": {
+        "type": "targetResistanceChanged",
+        "level": 10
+      }
     },
     {
       "name": "Status: indoor bike simulation parameters changed",
@@ -290,20 +432,35 @@
       "hex": "12 00 00 26 02 28 33",
       "expected": {
         "type": "indoorBikeSimulationChanged",
-        "simulation": { "windSpeedMps": 0, "gradePercent": 5.5, "crr": 0.004, "cw": 0.51 }
+        "simulation": {
+          "windSpeedMps": 0,
+          "gradePercent": 5.5,
+          "crr": 0.004,
+          "cw": 0.51
+        }
       }
     },
     {
       "name": "Status: spin down success",
       "characteristic": "fitnessMachineStatus",
       "hex": "14 02",
-      "expected": { "type": "spinDownStatus", "status": 2 }
+      "expected": {
+        "type": "spinDownStatus",
+        "status": 2
+      }
     },
     {
       "name": "Status: other op codes keep their raw parameter",
       "characteristic": "fitnessMachineStatus",
       "hex": "05 10 27",
-      "expected": { "type": "other", "opCode": 5, "parameter": [16, 39] }
+      "expected": {
+        "type": "other",
+        "opCode": 5,
+        "parameter": [
+          16,
+          39
+        ]
+      }
     },
     {
       "name": "Status: truncated target power",
@@ -313,30 +470,127 @@
     }
   ],
   "encode": [
-    { "name": "Request Control", "encoder": "requestControl", "args": [], "hex": "00" },
-    { "name": "Reset", "encoder": "reset", "args": [], "hex": "01" },
-    { "name": "Start or Resume", "encoder": "startOrResume", "args": [], "hex": "07" },
-    { "name": "Stop", "encoder": "stopOrPause", "args": ["stop"], "hex": "08 01" },
-    { "name": "Pause", "encoder": "stopOrPause", "args": ["pause"], "hex": "08 02" },
-    { "name": "Set Target Power 150 W", "encoder": "setTargetPower", "args": [150], "hex": "05 96 00" },
-    { "name": "Set Target Power 250 W", "encoder": "setTargetPower", "args": [250], "hex": "05 fa 00" },
-    { "name": "Set Target Power rounds to whole watts", "encoder": "setTargetPower", "args": [149.6], "hex": "05 96 00" },
-    { "name": "Set Target Power is signed", "encoder": "setTargetPower", "args": [-1], "hex": "05 ff ff" },
-    { "name": "Set Target Power saturates at sint16 max", "encoder": "setTargetPower", "args": [40000], "hex": "05 ff 7f" },
+    {
+      "name": "Request Control",
+      "encoder": "requestControl",
+      "args": [],
+      "hex": "00"
+    },
+    {
+      "name": "Reset",
+      "encoder": "reset",
+      "args": [],
+      "hex": "01"
+    },
+    {
+      "name": "Start or Resume",
+      "encoder": "startOrResume",
+      "args": [],
+      "hex": "07"
+    },
+    {
+      "name": "Stop",
+      "encoder": "stopOrPause",
+      "args": [
+        "stop"
+      ],
+      "hex": "08 01"
+    },
+    {
+      "name": "Pause",
+      "encoder": "stopOrPause",
+      "args": [
+        "pause"
+      ],
+      "hex": "08 02"
+    },
+    {
+      "name": "Set Target Power 150 W",
+      "encoder": "setTargetPower",
+      "args": [
+        150
+      ],
+      "hex": "05 96 00"
+    },
+    {
+      "name": "Set Target Power 250 W",
+      "encoder": "setTargetPower",
+      "args": [
+        250
+      ],
+      "hex": "05 fa 00"
+    },
+    {
+      "name": "Set Target Power rounds to whole watts",
+      "encoder": "setTargetPower",
+      "args": [
+        149.6
+      ],
+      "hex": "05 96 00"
+    },
+    {
+      "name": "Set Target Power is signed",
+      "encoder": "setTargetPower",
+      "args": [
+        -1
+      ],
+      "hex": "05 ff ff"
+    },
+    {
+      "name": "Set Target Power saturates at sint16 max",
+      "encoder": "setTargetPower",
+      "args": [
+        40000
+      ],
+      "hex": "05 ff 7f"
+    },
     {
       "name": "Indoor Bike Simulation: flat road",
       "encoder": "setIndoorBikeSimulation",
-      "args": [{ "windSpeedMps": 0, "gradePercent": 0, "crr": 0.004, "cw": 0.51 }],
+      "args": [
+        {
+          "windSpeedMps": 0,
+          "gradePercent": 0,
+          "crr": 0.004,
+          "cw": 0.51
+        }
+      ],
       "hex": "11 00 00 00 00 28 33"
     },
     {
       "name": "Indoor Bike Simulation: headwind and climb",
       "encoder": "setIndoorBikeSimulation",
-      "args": [{ "windSpeedMps": -2.5, "gradePercent": 5.5, "crr": 0.005, "cw": 0.6 }],
+      "args": [
+        {
+          "windSpeedMps": -2.5,
+          "gradePercent": 5.5,
+          "crr": 0.005,
+          "cw": 0.6
+        }
+      ],
       "hex": "11 3c f6 26 02 32 3c"
     },
-    { "name": "Wahoo unlock", "encoder": "wahooUnlock", "args": [], "hex": "20 ee fc" },
-    { "name": "Wahoo ERG 250 W", "encoder": "wahooSetErg", "args": [250], "hex": "42 fa 00" },
-    { "name": "Wahoo ERG 1000 W", "encoder": "wahooSetErg", "args": [1000], "hex": "42 e8 03" }
+    {
+      "name": "Wahoo unlock",
+      "encoder": "wahooUnlock",
+      "args": [],
+      "hex": "20 ee fc"
+    },
+    {
+      "name": "Wahoo ERG 250 W",
+      "encoder": "wahooSetErg",
+      "args": [
+        250
+      ],
+      "hex": "42 fa 00"
+    },
+    {
+      "name": "Wahoo ERG 1000 W",
+      "encoder": "wahooSetErg",
+      "args": [
+        1000
+      ],
+      "hex": "42 e8 03"
+    }
   ]
 }

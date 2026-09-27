@@ -18,6 +18,7 @@ import {
   toHex,
 } from "./codec";
 import type { CharacteristicName, IndoorBikeSimulation } from "./codec";
+import { CAPTURE_FILE_PATTERN, parseCaptureFile } from "./capture";
 
 const fixturesDir = join(__dirname, "fixtures");
 
@@ -37,6 +38,7 @@ interface EncodeVector {
 }
 
 const vectors = JSON.parse(readFileSync(join(fixturesDir, "spec-vectors.json"), "utf8")) as {
+  provenance: { decode: Record<string, string>; encode: Record<string, string> };
   decode: DecodeVector[];
   encode: EncodeVector[];
 };
@@ -53,6 +55,11 @@ const encoders = {
 };
 
 describe("spec byte vectors", () => {
+  it("names the specification behind every vector family", () => {
+    for (const vector of vectors.decode) expect(vectors.provenance.decode[vector.characteristic], vector.name).toBeTruthy();
+    for (const vector of vectors.encode) expect(vectors.provenance.encode[vector.encoder], vector.name).toBeTruthy();
+  });
+
   it.each(vectors.decode.map((v) => [v.name, v] as const))("decodes %s", (_name, vector) => {
     const decode = characteristicDecoders[vector.characteristic];
     const view = fromHex(vector.hex);
@@ -70,23 +77,20 @@ describe("spec byte vectors", () => {
 });
 
 // Real notifications recorded on the diagnostics page ("Record 30 s of raw
-// notifications") are committed as fixtures/kickr-core-<firmware>.json. Every
-// recorded payload must decode, and trainer data must be physically plausible.
+// notifications") are committed unchanged as fixtures/kickr-core-<firmware>.json.
+// Every recorded payload must decode, and trainer power must be plausible.
+// Until the owner records one on the KICKR CORE, this suite is skipped.
 describe("recorded hardware captures", () => {
-  const captures = readdirSync(fixturesDir).filter((file) => /^kickr-core-.+\.json$/.test(file));
+  const captures = readdirSync(fixturesDir).filter((file) => CAPTURE_FILE_PATTERN.test(file));
 
-  it.skipIf(captures.length === 0)("decodes every recorded notification", () => {
-    for (const file of captures) {
-      const capture = JSON.parse(readFileSync(join(fixturesDir, file), "utf8")) as {
-        notifications: { characteristic: CharacteristicName; hex: string }[];
-      };
-      expect(capture.notifications.length, file).toBeGreaterThan(0);
-      for (const { characteristic, hex } of capture.notifications) {
-        const decoded = characteristicDecoders[characteristic](fromHex(hex)) as { powerWatts?: number };
-        if (decoded.powerWatts !== undefined) {
-          expect(decoded.powerWatts, `${file} ${hex}`).toBeGreaterThanOrEqual(0);
-          expect(decoded.powerWatts, `${file} ${hex}`).toBeLessThan(2500);
-        }
+  if (captures.length === 0) it.skip("decodes every notification in a committed capture (none recorded yet)", () => {});
+  it.each(captures)("decodes every notification in %s", (file) => {
+    const capture = parseCaptureFile(readFileSync(join(fixturesDir, file), "utf8"));
+    for (const { characteristic, hex } of capture.notifications) {
+      const decoded = characteristicDecoders[characteristic](fromHex(hex)) as { powerWatts?: number };
+      if (decoded.powerWatts !== undefined) {
+        expect(decoded.powerWatts, hex).toBeGreaterThanOrEqual(0);
+        expect(decoded.powerWatts, hex).toBeLessThan(2500);
       }
     }
   });

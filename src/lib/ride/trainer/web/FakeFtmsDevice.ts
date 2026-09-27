@@ -170,12 +170,24 @@ export class FakeFtmsDevice extends EventTarget implements BluetoothDeviceLike {
   poweredOn = true;
   // Stops notifications while staying connected (the "connected but silent" case).
   silent = false;
+  // Stops only Indoor Bike Data; Cycling Power keeps flowing.
+  silentIndoorBikeData = false;
+  // Another app already controls the trainer: Request Control answers
+  // "control not permitted".
+  controlHeldElsewhere = false;
+  // FTMS 4.16.3: a write while a procedure is in progress fails at the ATT
+  // layer with "Procedure Already In Progress". Bumped per link so a response
+  // timer from a dropped link cannot clear a newer procedure.
+  private procedureInProgress = false;
+  private procedureGeneration = 0;
 
   cadenceRpm: number;
   targetWatts: number | null = null;
   ergMode = false;
   hasControl = false;
   readonly writes: number[][] = [];
+  // Control point writes refused because a procedure was still in progress.
+  readonly rejectedWrites: number[][] = [];
   private power = 0;
   private crankRevolutions = 0;
   private crankEventTime1024 = 0;
@@ -271,6 +283,8 @@ export class FakeFtmsDevice extends EventTarget implements BluetoothDeviceLike {
   }
 
   onDisconnected(): void {
+    this.procedureInProgress = false;
+    this.procedureGeneration += 1;
     if (this.timer !== null) this.clock.clearTimeout(this.timer);
     this.timer = null;
     for (const service of this.services) for (const c of service.characteristics) c.notifying = false;
@@ -310,18 +324,32 @@ export class FakeFtmsDevice extends EventTarget implements BluetoothDeviceLike {
     const watts = Math.round(this.power);
     const speed = Math.round((this.cadenceRpm / 90) * 3000);
     // Flags 0x0044: speed (bit 0 clear), instantaneous cadence, instantaneous power.
-    this.indoorBikeData.push([0x44, 0x00, ...le16(speed), ...le16(Math.round(this.cadenceRpm * 2)), ...le16(watts)]);
+    if (!this.silentIndoorBikeData) this.indoorBikeData.push([0x44, 0x00, ...le16(speed), ...le16(Math.round(this.cadenceRpm * 2)), ...le16(watts)]);
     // Flags 0x0020: crank revolution data.
     this.powerMeasurement.push([0x20, 0x00, ...le16(watts), ...le16(this.crankRevolutions), ...le16(this.crankEventTime1024)]);
   }
 
   private respond(opCode: number, result: number): void {
-    this.clock.setTimeout(() => this.controlPoint.push([ControlOpCode.responseCode, opCode, result]), this.options.responseDelayMs);
+    const generation = this.procedureGeneration;
+    this.clock.setTimeout(() => {
+      if (generation !== this.procedureGeneration) return;
+      this.procedureInProgress = false;
+      this.controlPoint.push([ControlOpCode.responseCode, opCode, result]);
+    }, this.options.responseDelayMs);
   }
 
   private handleControlWrite(bytes: number[]): void {
+    if (this.procedureInProgress) {
+      this.rejectedWrites.push(bytes);
+      throw new DOMException("Procedure Already In Progress", "InvalidStateError");
+    }
+    this.procedureInProgress = true;
     this.writes.push(bytes);
     const [opCode] = bytes;
+    if (opCode === ControlOpCode.requestControl && this.controlHeldElsewhere) {
+      this.respond(opCode, ControlResultCode.controlNotPermitted);
+      return;
+    }
     if (opCode === ControlOpCode.requestControl) {
       this.hasControl = true;
       this.respond(opCode, ControlResultCode.success);
