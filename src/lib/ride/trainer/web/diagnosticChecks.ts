@@ -25,7 +25,10 @@ export interface TargetTest {
   // First moment power entered the band and then stayed there.
   settledAtMs: number | null;
   inBandSinceMs: number | null;
-  peakWatts: number | null;
+  // First power reading after the write, which sets the step's direction.
+  startWatts: number | null;
+  // Furthest power went past the target in the step's direction.
+  overshootWatts: number;
 }
 
 export interface LiveReading {
@@ -89,19 +92,23 @@ export function addRecentSample(
 }
 
 export function newTargetTest(watts: number, sentAtMs: number): TargetTest {
-  return { watts, sentAtMs, result: null, latencyMs: null, settledAtMs: null, inBandSinceMs: null, peakWatts: null };
+  return { watts, sentAtMs, result: null, latencyMs: null, settledAtMs: null, inBandSinceMs: null, startWatts: null, overshootWatts: 0 };
 }
 
 // Folds one power reading into the latest target test. Overshoot is tracked
-// only for the settling window, so a later sprint does not count.
+// only for the settling window, so a later sprint does not count. It is
+// measured in the step's direction: above the target when stepping up, below
+// it when stepping down, so the old power on a downward step does not count.
 export function trackTargetPower(test: TargetTest, powerWatts: number, atMs: number): TargetTest {
   if (test.result?.status !== "applied" || atMs - test.sentAtMs > SETTLE_LIMIT_MS * 2) return test;
-  const peakWatts = Math.max(test.peakWatts ?? powerWatts, powerWatts);
-  if (test.settledAtMs !== null) return { ...test, peakWatts };
+  const startWatts = test.startWatts ?? powerWatts;
+  const past = startWatts <= test.watts ? powerWatts - test.watts : test.watts - powerWatts;
+  const overshootWatts = Math.max(test.overshootWatts, past);
+  if (test.settledAtMs !== null) return { ...test, startWatts, overshootWatts };
   const inBand = Math.abs(powerWatts - test.watts) <= Math.max(3, test.watts * SETTLE_BAND);
   const inBandSinceMs = inBand ? (test.inBandSinceMs ?? atMs) : null;
   const settledAtMs = inBandSinceMs !== null && atMs - inBandSinceMs >= SETTLE_HOLD_MS ? inBandSinceMs : null;
-  return { ...test, inBandSinceMs, settledAtMs, peakWatts };
+  return { ...test, inBandSinceMs, settledAtMs, startWatts, overshootWatts };
 }
 
 export type TargetVerdict = { state: CheckState; summary: string };
@@ -119,7 +126,7 @@ export function judgeTargetTest(test: TargetTest, nowMs: number): TargetVerdict 
   }
   if (test.settledAtMs !== null) {
     const settle = (test.settledAtMs - test.sentAtMs) / 1000;
-    const overshoot = test.peakWatts !== null ? Math.max(0, Math.round(test.peakWatts - test.watts)) : 0;
+    const overshoot = Math.round(test.overshootWatts);
     const summary = `${latency}, settled in ${settle.toFixed(1)} s, overshoot ${overshoot} W`;
     return { state: settle * 1000 <= SETTLE_LIMIT_MS ? "pass" : "fail", summary };
   }

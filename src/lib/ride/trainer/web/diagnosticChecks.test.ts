@@ -51,8 +51,14 @@ describe("target tracking", () => {
   it("settles once power stays in the band and records overshoot", () => {
     const test = followed(150, [90, 130, 148, 156, 151, 150, 149]);
     expect(test.settledAtMs).toBe(3000);
-    expect(test.peakWatts).toBe(156);
     expect(judgeTargetTest(test, 8000)).toEqual({ state: "pass", summary: "response 80 ms, settled in 3.0 s, overshoot 6 W" });
+  });
+
+  it("measures overshoot in the direction of a downward step", () => {
+    const smooth = followed(100, [176, 140, 118, 104, 101, 100, 100]);
+    expect(judgeTargetTest(smooth, 8000).summary).toBe("response 80 ms, settled in 4.0 s, overshoot 0 W");
+    const dipped = followed(30, [90, 50, 24, 29, 31, 30, 30]);
+    expect(judgeTargetTest(dipped, 8000).summary).toMatch(/overshoot 6 W$/);
   });
 
   it("restarts the hold when power leaves the band", () => {
