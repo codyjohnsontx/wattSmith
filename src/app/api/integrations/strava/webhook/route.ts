@@ -1,6 +1,8 @@
 import { db } from "@/lib/server/db";
+import { isStravaEnabled, stravaDisabledResponse } from "@/lib/server/strava/config";
 
 export async function GET(request: Request) {
+  if (!isStravaEnabled()) return stravaDisabledResponse();
   const url = new URL(request.url);
   const verifyToken = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
@@ -11,6 +13,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!isStravaEnabled()) return stravaDisabledResponse();
   const event = await request.json().catch(() => undefined) as {
     object_type?: string;
     aspect_type?: string;

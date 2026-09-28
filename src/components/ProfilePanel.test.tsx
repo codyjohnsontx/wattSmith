@@ -12,7 +12,7 @@ describe("ProfilePanel save reliability", () => {
     const user = userEvent.setup();
     let resolveSave: (value: typeof defaultProfile) => void = () => undefined;
     const onSave = vi.fn(() => new Promise<typeof defaultProfile>((resolve) => { resolveSave = resolve; }));
-    render(<ProfilePanel profile={defaultProfile} workout={cloneDefaultWorkout()} integrations={[]} onSave={onSave} onReload={vi.fn()} />);
+    render(<ProfilePanel profile={defaultProfile} workout={cloneDefaultWorkout()} integrations={[]} stravaEnabled={false} onSave={onSave} onReload={vi.fn()} />);
     const ftp = screen.getByLabelText("FTP");
     await user.clear(ftp);
     await user.type(ftp, "275");
@@ -28,7 +28,7 @@ describe("ProfilePanel save reliability", () => {
   it("preserves the draft on 409 and offers reload latest", async () => {
     const user = userEvent.setup();
     const onReload = vi.fn().mockResolvedValue(defaultProfile);
-    render(<ProfilePanel profile={defaultProfile} workout={cloneDefaultWorkout()} integrations={[]} onSave={vi.fn().mockRejectedValue(new ApiError(409, "Profile changed."))} onReload={onReload} />);
+    render(<ProfilePanel profile={defaultProfile} workout={cloneDefaultWorkout()} integrations={[]} stravaEnabled={false} onSave={vi.fn().mockRejectedValue(new ApiError(409, "Profile changed."))} onReload={onReload} />);
     const goal = screen.getByLabelText("Primary goal");
     await user.clear(goal);
     await user.type(goal, "Race sharper");
@@ -42,7 +42,7 @@ describe("ProfilePanel save reliability", () => {
     const user = userEvent.setup();
     let resolveSave: (value: typeof defaultProfile) => void = () => undefined;
     const onSave = vi.fn(() => new Promise<typeof defaultProfile>((resolve) => { resolveSave = resolve; }));
-    render(<ProfilePanel profile={defaultProfile} workout={cloneDefaultWorkout()} integrations={[]} onSave={onSave} onReload={vi.fn()} />);
+    render(<ProfilePanel profile={defaultProfile} workout={cloneDefaultWorkout()} integrations={[]} stravaEnabled={false} onSave={onSave} onReload={vi.fn()} />);
     const goal = screen.getByLabelText("Primary goal");
     await user.clear(goal);
     await user.type(goal, "Submitted goal");
@@ -52,5 +52,19 @@ describe("ProfilePanel save reliability", () => {
     resolveSave({ ...defaultProfile, primaryGoal: "Submitted goal" });
     expect(await screen.findByDisplayValue("Newer draft")).toBeInTheDocument();
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+  });
+});
+
+describe("ProfilePanel Strava integration", () => {
+  it("hides the Strava connection link and explains manual FIT upload is coming when Strava is off", () => {
+    render(<ProfilePanel profile={defaultProfile} workout={cloneDefaultWorkout()} integrations={[{ provider: "strava", status: "not_connected" }]} stravaEnabled={false} onSave={vi.fn()} onReload={vi.fn()} />);
+    expect(screen.queryByRole("link", { name: "Manage Strava connection" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Strava is not connected on this deployment\. Once ride recording ships/)).toBeInTheDocument();
+    expect(screen.getByText("Off")).toBeInTheDocument();
+  });
+
+  it("links to the Strava connection when Strava is configured", () => {
+    render(<ProfilePanel profile={defaultProfile} workout={cloneDefaultWorkout()} integrations={[]} stravaEnabled onSave={vi.fn()} onReload={vi.fn()} />);
+    expect(screen.getByRole("link", { name: "Manage Strava connection" })).toHaveAttribute("href", "/activities");
   });
 });

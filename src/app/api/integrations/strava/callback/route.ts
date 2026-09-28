@@ -4,8 +4,10 @@ import { db } from "@/lib/server/db";
 import { invalidateStravaCache } from "@/lib/server/strava/cache";
 import { exchangeAuthorizationCode, hasRequiredScopes } from "@/lib/server/strava/client";
 import { encryptStravaToken, verifyStravaOAuthState } from "@/lib/server/strava/tokens";
+import { isStravaEnabled, stravaDisabledResponse } from "@/lib/server/strava/config";
 
 export async function GET(request: Request) {
+  if (!isStravaEnabled()) return stravaDisabledResponse();
   try {
     const user = await requireUser();
     const url = new URL(request.url);

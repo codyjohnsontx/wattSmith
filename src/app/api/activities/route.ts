@@ -4,6 +4,7 @@ import { authenticationErrorResponse, requireUser } from "@/lib/server/auth";
 import { getCachedStravaResource, cacheStravaResource } from "@/lib/server/strava/cache";
 import { stravaApiFetch, StravaApiError } from "@/lib/server/strava/client";
 import { isCyclingActivity, stravaActivityToSummary } from "@/lib/server/strava/activities";
+import { isStravaEnabled, stravaDisabledResponse } from "@/lib/server/strava/config";
 
 function stravaErrorResponse(error: unknown) {
   return error instanceof StravaApiError
@@ -12,6 +13,7 @@ function stravaErrorResponse(error: unknown) {
 }
 
 export async function GET(request: Request) {
+  if (!isStravaEnabled()) return stravaDisabledResponse();
   try {
     const user = await requireUser();
     const params = new URL(request.url).searchParams;

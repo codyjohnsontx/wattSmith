@@ -1,5 +1,6 @@
 import { signOut } from "@/auth";
 import { AuthenticationError, requireUser } from "@/lib/server/auth";
+import { isStravaEnabled } from "@/lib/server/strava/config";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -33,9 +34,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <Link href="/workouts" className="px-3 py-2 transition hover:text-slate-100">
                 Workouts
               </Link>
-              <Link href="/activities" className="px-3 py-2 transition hover:text-slate-100">
-                Activities
-              </Link>
+              {isStravaEnabled() ? (
+                <Link href="/activities" className="px-3 py-2 transition hover:text-slate-100">
+                  Activities
+                </Link>
+              ) : null}
               <Link href="/settings" className="px-3 py-2 transition hover:text-slate-100">
                 Settings
               </Link>

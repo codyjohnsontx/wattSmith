@@ -7,10 +7,12 @@ import { resolveFtpForDate, FtpHistoryError } from "@/lib/server/profile";
 import { isCyclingActivity, normalizeStravaStreams, stravaActivityToSummary } from "@/lib/server/strava/activities";
 import { cacheStravaResource, getCachedStravaResource } from "@/lib/server/strava/cache";
 import { stravaApiFetch, StravaApiError } from "@/lib/server/strava/client";
+import { isStravaEnabled, stravaDisabledResponse } from "@/lib/server/strava/config";
 
 type Context = { params: Promise<{ activityId: string }> };
 
 export async function GET(_request: Request, context: Context) {
+  if (!isStravaEnabled()) return stravaDisabledResponse();
   try {
     const user = await requireUser();
     const { activityId } = await context.params;
