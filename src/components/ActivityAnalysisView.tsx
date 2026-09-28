@@ -22,7 +22,7 @@ function comparisonText(value: ComparisonMetric, suffix: string) {
   return `${metric(value.first, suffix)} → ${metric(value.final, suffix)}`;
 }
 
-export function ActivityAnalysisView({ detail, demo = false }: { detail: ActivityDetail; demo?: boolean }) {
+export function ActivityAnalysisView({ detail, demo = false, stravaEnabled = false }: { detail: ActivityDetail; demo?: boolean; stravaEnabled?: boolean }) {
   const router = useRouter();
   const [series, setSeries] = useState({ power: true, heartRate: true, cadence: true });
   const [selectedPeakDuration, setSelectedPeakDuration] = useState<number | null>(null);
@@ -202,7 +202,7 @@ export function ActivityAnalysisView({ detail, demo = false }: { detail: Activit
           <section aria-labelledby="quality-heading"><h2 id="quality-heading" className="text-2xl font-semibold text-white">Data quality & calculations</h2><p className="mt-2 text-sm text-slate-400">Power coverage: {analysis.dataQuality.powerCoveragePercent.toFixed(1)}% · {analysis.dataQuality.hasDevicePower ? "Device power" : "Estimated or absent power"}</p><ul className="mt-6 space-y-3 text-sm leading-6 text-slate-300">{analysis.dataQuality.notes.map((note) => <li key={note} className="border-l border-slate-700 pl-4">{note}</li>)}</ul>{analysis.dataQuality.missingStreams.length ? <p className="mt-5 text-sm text-amber-200">Unavailable: {analysis.dataQuality.missingStreams.join(", ")}. Missing metrics are omitted rather than shown as zero.</p> : null}{!demo ? <Link href="/settings#ftp-history" className="mt-5 inline-block text-sm font-semibold text-cyan-200 underline underline-offset-4">Review FTP history</Link> : null}</section>
         </div>
 
-        {demo ? <footer className="border-t border-slate-800 py-8 text-center"><p className="text-sm text-slate-400">This race is entirely synthetic and runs through the same analytics engine as connected activities.</p><Link href="/sign-in" className="mt-4 inline-block bg-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950">Sign in and connect Strava</Link></footer> : null}
+        {demo ? <footer className="border-t border-slate-800 py-8 text-center"><p className="text-sm text-slate-400">This race is entirely synthetic and runs through the Wattsmith analytics engine.</p><Link href="/sign-in" className="mt-4 inline-block bg-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950">{stravaEnabled ? "Sign in and connect Strava" : "Sign in"}</Link></footer> : null}
       </div>
     </main>
   );

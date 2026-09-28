@@ -42,4 +42,17 @@ describe("ActivityAnalysisView", () => {
     expect(push).toHaveBeenCalledWith("/workouts");
     expect(window.sessionStorage.getItem("wattsmith.activity-prescription-draft.v1")).toContain("5 min demand rehearsal");
   });
+
+  it("offers a plain sign-in from the demo when Strava is off", () => {
+    render(<ActivityAnalysisView detail={getDemoActivityDetail()} demo />);
+
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/sign-in");
+    expect(screen.queryByText(/connect Strava/i)).not.toBeInTheDocument();
+  });
+
+  it("invites connecting Strava from the demo when Strava is on", () => {
+    render(<ActivityAnalysisView detail={getDemoActivityDetail()} demo stravaEnabled />);
+
+    expect(screen.getByRole("link", { name: "Sign in and connect Strava" })).toHaveAttribute("href", "/sign-in");
+  });
 });
