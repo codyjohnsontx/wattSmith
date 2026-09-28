@@ -124,9 +124,10 @@ function upsertWorkoutInList(workouts: Workout[], workout: Workout): Workout[] {
 
 interface WorkoutWorkspaceProps {
   initialTab?: WorkspaceTab;
+  stravaEnabled?: boolean;
 }
 
-export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspaceProps) {
+export function WorkoutWorkspace({ initialTab = "builder", stravaEnabled = false }: WorkoutWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialTab);
   const [profilePanelMounted, setProfilePanelMounted] = useState(initialTab === "profile");
   const [workoutHistory, setWorkoutHistory] = useState(() =>
@@ -787,6 +788,7 @@ export function WorkoutWorkspace({ initialTab = "builder" }: WorkoutWorkspacePro
               profile={profile}
               workout={workout}
               integrations={integrations}
+              stravaEnabled={stravaEnabled}
               onSave={handleProfileSave}
               onReload={handleProfileReload}
               onNavigate={guardLinkNavigation}

@@ -2,8 +2,10 @@ import { cookies } from "next/headers";
 import { authenticationErrorResponse, requireUser } from "@/lib/server/auth";
 import { REQUIRED_STRAVA_SCOPES, STRAVA_OAUTH_BASE_URL, stravaCallbackUrl, stravaClientId } from "@/lib/server/strava/client";
 import { createStravaOAuthState } from "@/lib/server/strava/tokens";
+import { isStravaEnabled, stravaDisabledResponse } from "@/lib/server/strava/config";
 
 export async function GET() {
+  if (!isStravaEnabled()) return stravaDisabledResponse();
   try {
     const user = await requireUser();
     const state = createStravaOAuthState(user.id);

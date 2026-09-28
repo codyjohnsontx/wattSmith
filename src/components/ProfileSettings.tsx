@@ -8,7 +8,7 @@ import type { IntegrationConnection } from "@/lib/integrations/types";
 import type { AthleteProfile } from "@/lib/workout/types";
 import { useEffect, useMemo, useState } from "react";
 
-export function ProfileSettings({ initialProfile }: { initialProfile: AthleteProfile }) {
+export function ProfileSettings({ initialProfile, stravaEnabled }: { initialProfile: AthleteProfile; stravaEnabled: boolean }) {
   const [profile, setProfile] = useState(initialProfile);
   const [integrations, setIntegrations] = useState<IntegrationConnection[]>([]);
   const workout = useMemo(() => ({ ...cloneDefaultWorkout(), ftp: profile.ftp }), [profile.ftp]);
@@ -42,6 +42,7 @@ export function ProfileSettings({ initialProfile }: { initialProfile: AthletePro
         profile={profile}
         workout={workout}
         integrations={integrations}
+        stravaEnabled={stravaEnabled}
         onSave={saveProfile}
         onReload={reloadProfile}
       />

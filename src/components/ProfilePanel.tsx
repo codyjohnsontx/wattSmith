@@ -11,6 +11,7 @@ interface ProfilePanelProps {
   profile: AthleteProfile;
   workout: Workout;
   integrations: IntegrationConnection[];
+  stravaEnabled: boolean;
   onSave: (profile: AthleteProfile) => Promise<AthleteProfile>;
   onReload: () => Promise<AthleteProfile>;
   onNavigate?: ComponentProps<typeof Link>["onNavigate"];
@@ -22,7 +23,7 @@ function inputClassName() {
   return "mt-1 h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300";
 }
 
-export function ProfilePanel({ profile, workout, integrations, onSave, onReload, onNavigate }: ProfilePanelProps) {
+export function ProfilePanel({ profile, workout, integrations, stravaEnabled, onSave, onReload, onNavigate }: ProfilePanelProps) {
   const [draft, setDraft] = useState(profile);
   const [savedBaseline, setSavedBaseline] = useState(profile);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error" | "conflict">("idle");
@@ -248,7 +249,9 @@ export function ProfilePanel({ profile, workout, integrations, onSave, onReload,
             Integrations
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Strava is a separate, revocable activity-data connection. Cached activity data expires within seven days.
+            {stravaEnabled
+              ? "Strava is a separate, revocable activity-data connection. Cached activity data expires within seven days."
+              : "Strava is not enabled on this deployment. To get a ride onto Strava, download its .fit file and upload it to Strava yourself."}
           </p>
           <div className="mt-4 space-y-2">
             {integrations.map((connection) => (
@@ -258,14 +261,16 @@ export function ProfilePanel({ profile, workout, integrations, onSave, onReload,
               >
                 <span className="capitalize text-slate-100">{connection.provider}</span>
                 <span className="rounded-full bg-slate-800 px-2.5 py-1 text-xs text-slate-400">
-                  Planned
+                  {connection.provider === "strava" && !stravaEnabled ? "Off" : "Planned"}
                 </span>
               </div>
             ))}
           </div>
-          <Link href="/activities" onNavigate={onNavigate} className="mt-4 inline-block text-sm font-semibold text-cyan-200 underline underline-offset-4">
-            Manage Strava connection
-          </Link>
+          {stravaEnabled ? (
+            <Link href="/activities" onNavigate={onNavigate} className="mt-4 inline-block text-sm font-semibold text-cyan-200 underline underline-offset-4">
+              Manage Strava connection
+            </Link>
+          ) : null}
         </section>
       </div>
     </section>

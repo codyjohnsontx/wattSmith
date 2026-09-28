@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stravaApiFetch } from "@/lib/server/strava/client";
 
 vi.mock("@/lib/server/auth", () => ({
@@ -26,7 +26,11 @@ vi.mock("@/lib/server/strava/client", () => ({
 }));
 
 describe("activity detail route", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("STRAVA_CLIENT_ID", "client");
+  });
+  afterEach(() => vi.unstubAllEnvs());
 
   it("returns not found for an owned non-cycling activity before loading streams", async () => {
     (stravaApiFetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({

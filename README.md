@@ -17,7 +17,7 @@ Wattsmith is a cycling analysis-to-prescription workspace. It helps a rider unde
 - Rider-selected peak-demand mapping that explains the observed effort, editable workout target, repeat structure, and recovery before creating an unsaved builder draft.
 - A public synthetic-data demo at [`/demo`](http://localhost:3000/demo) that uses the same analysis engine and UI without credentials or athlete data.
 
-Strava activity analysis requires a configured Strava application. Additional finding-to-workout mappings, FIT/TCX import, coaching relationships, plans, calendar views, and longitudinal analytics remain roadmap work.
+Strava activity analysis is optional; see [Strava (optional, off by default)](#strava-optional-off-by-default). Additional finding-to-workout mappings, FIT/TCX import, coaching relationships, plans, calendar views, and longitudinal analytics remain roadmap work.
 
 ## Development
 
@@ -34,6 +34,14 @@ npm run dev
 Open `http://localhost:3000`. The credential-free reviewer path is `http://localhost:3000/demo`.
 
 Required services and credentials are documented in [`.env.example`](.env.example). GitHub remains the application sign-in provider; Strava is connected separately and can be revoked without changing the Wattsmith account.
+
+## Strava (optional, off by default)
+
+Strava is off unless `STRAVA_CLIENT_ID` is set. Strava requires developers to hold a paid Strava subscription to run an API application, so the public deployment runs with Strava off. With it off, the Activities page, the Strava connection link in settings, and every `/api/integrations/strava/*` and `/api/activities/*` route are switched off (the routes return `404` with code `strava_disabled`). The rest of Wattsmith and the `/demo` page work unchanged.
+
+The free path is manual: download the ride's `.fit` file and upload it at [strava.com/upload](https://www.strava.com/upload/select) yourself. In-browser ride recording with a `.fit` download is planned work and not in the app yet.
+
+To turn Strava on for your own deployment, create a Strava API application and fill in the `STRAVA_*` values in `.env.local`.
 
 ## Validation
 
