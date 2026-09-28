@@ -86,18 +86,36 @@ function max(values: number[]): number | null {
   return values.length === 0 ? null : Math.max(...values);
 }
 
-// Coggan normalized power over the 1 Hz power samples: 30 s rolling mean,
-// fourth-power mean, fourth root. Unknown seconds are skipped, not zeroed.
-export function normalizedPower(watts: number[]): number | null {
-  const window = 30;
-  if (watts.length < window) return null;
-  let sum = watts.slice(0, window).reduce((total, value) => total + value, 0);
-  let fourthPowerSum = (sum / window) ** 4;
-  for (let i = window; i < watts.length; i += 1) {
-    sum += watts[i] - watts[i - window];
-    fourthPowerSum += (sum / window) ** 4;
+// Coggan normalized power: 30 s rolling mean, fourth-power mean, fourth root.
+// Each stretch is an unpaused run of the 1 Hz power stream with unknown
+// seconds kept in place, so an outage is never collapsed into a window that
+// did not happen. A window counts only when at least 24 of its 30 seconds have
+// power (the same rule as the activity analysis) and is averaged over those.
+const NP_WINDOW = 30;
+const NP_MIN_VALID = 24;
+
+export function normalizedPower(stretches: (number | null)[][]): number | null {
+  const means: number[] = [];
+  for (const watts of stretches) {
+    for (let end = NP_WINDOW; end <= watts.length; end += 1) {
+      const valid = present(watts.slice(end - NP_WINDOW, end));
+      if (valid.length >= NP_MIN_VALID) means.push(valid.reduce((sum, value) => sum + value, 0) / valid.length);
+    }
   }
-  return Math.round((fourthPowerSum / (watts.length - window + 1)) ** 0.25);
+  if (means.length === 0) return null;
+  return Math.round((means.reduce((sum, value) => sum + value ** 4, 0) / means.length) ** 0.25);
+}
+
+// Unpaused runs of power readings, split at every pause.
+function ridingStretches(rows: RecorderRow[]): (number | null)[][] {
+  const stretches: (number | null)[][] = [];
+  let current: (number | null)[] | null = null;
+  for (const row of rows) {
+    if (row.paused) current = null;
+    else if (current) current.push(row.power);
+    else stretches.push((current = [row.power]));
+  }
+  return stretches;
 }
 
 function totals(rows: RecorderRow[], records: Map<number, FitRecord>): FitTotals {
@@ -121,13 +139,18 @@ function totals(rows: RecorderRow[], records: Map<number, FitRecord>): FitTotals
   };
 }
 
+// FIT message_index keeps 12 bits for the index, so 4,096 laps at most.
+export const MAX_FIT_LAPS = 4096;
+
 // Consecutive rows with the same segment form a lap, so skip and back give
-// laps in ride order and a repeated segment gets a lap each time.
+// laps in ride order and a repeated segment gets a lap each time. An import
+// can hold more segments than FIT can index; the rest of such a ride goes
+// into the last lap rather than failing the whole file.
 function splitLaps(rows: RecorderRow[]): RecorderRow[][] {
   const laps: RecorderRow[][] = [];
   for (const row of rows) {
     const current = laps.at(-1);
-    if (current && current[0].segmentIndex === row.segmentIndex) current.push(row);
+    if (current && (current[0].segmentIndex === row.segmentIndex || laps.length === MAX_FIT_LAPS)) current.push(row);
     else laps.push([row]);
   }
   return laps;
@@ -162,11 +185,10 @@ export function summarizeRide(rows: RecorderRow[]): FitRideSummary {
   }
 
   const byT = new Map(records.map((record) => [record.t, record]));
-  const riddenPower = present(rows.filter((row) => !row.paused).map((row) => row.power));
   return {
     records,
     timerEvents,
     laps: splitLaps(rows).map((lapRows) => ({ segmentIndex: lapRows[0].segmentIndex, ...totals(lapRows, byT) })),
-    session: { ...totals(rows, byT), normalizedPower: normalizedPower(riddenPower) },
+    session: { ...totals(rows, byT), normalizedPower: normalizedPower(ridingStretches(rows)) },
   };
 }

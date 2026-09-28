@@ -1,4 +1,5 @@
-import { FitWriter } from "@markw65/fit-file-writer";
+import { FitWriter, fit_messages } from "@markw65/fit-file-writer";
+import type { UserMessageMap } from "@markw65/fit-file-writer";
 import type { RecorderRow } from "@/lib/ride/engine/types";
 import { summarizeRide } from "./summary";
 import type { FitTotals } from "./summary";
@@ -27,6 +28,17 @@ const APPLICATION_ID = [
   0x5b, 0x8e, 0x2f, 0x71, 0x0c, 0x4d, 0x4a, 0x93, 0x9e, 0x16, 0x3d, 0xa2, 0x57, 0xc4, 0x80, 0x1f,
 ];
 const TARGET_POWER_FIELD = 0;
+// FIT base type id of an endian-aware uint16.
+const FIT_BASE_TYPE_UINT16 = 0x84;
+
+// The writer declares any named type that fits in a byte as enum, but
+// Garmin's profile gives these two fields base type uint8.
+const PROFILE_BASE_TYPES = {
+  device_info: { fields: { device_index: { ...fit_messages.device_info.fields.device_index, type: "uint8" } } },
+  field_description: {
+    fields: { fit_base_type_id: { ...fit_messages.field_description.fields.fit_base_type_id, type: "uint8" } },
+  },
+} satisfies UserMessageMap;
 const CREATOR_DEVICE_INDEX = 0;
 const TRAINER_DEVICE_INDEX = 1;
 const HEART_RATE_DEVICE_INDEX = 2;
@@ -87,12 +99,13 @@ export function encodeRideFit(input: FitRideInput): Uint8Array<ArrayBuffer> {
     true,
   );
   writer.writeMessage("developer_data_id", { developer_data_index: 0, application_id: APPLICATION_ID }, null, true);
-  writer.writeMessage(
+  writer.writeCustomMessage(
+    PROFILE_BASE_TYPES,
     "field_description",
     {
       developer_data_index: 0,
       field_definition_number: TARGET_POWER_FIELD,
-      fit_base_type_id: "uint16",
+      fit_base_type_id: FIT_BASE_TYPE_UINT16,
       field_name: fitString("target_power"),
       units: fitString("watts"),
     },
@@ -100,7 +113,8 @@ export function encodeRideFit(input: FitRideInput): Uint8Array<ArrayBuffer> {
     true,
   );
 
-  writer.writeMessage(
+  writer.writeCustomMessage(
+    PROFILE_BASE_TYPES,
     "device_info",
     {
       timestamp: startSeconds,
@@ -115,7 +129,8 @@ export function encodeRideFit(input: FitRideInput): Uint8Array<ArrayBuffer> {
     true,
   );
   if (input.trainerName) {
-    writer.writeMessage(
+    writer.writeCustomMessage(
+      PROFILE_BASE_TYPES,
       "device_info",
       {
         timestamp: startSeconds,
@@ -129,7 +144,8 @@ export function encodeRideFit(input: FitRideInput): Uint8Array<ArrayBuffer> {
     );
   }
   if (input.heartRateMonitorName) {
-    writer.writeMessage(
+    writer.writeCustomMessage(
+      PROFILE_BASE_TYPES,
       "device_info",
       {
         timestamp: startSeconds,

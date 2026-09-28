@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { downloadFitFile } from "./downloadFit";
+import { downloadFitFile, REVOKE_DELAY_MS } from "./downloadFit";
 
 describe("downloadFitFile", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
-  it("saves the bytes as a FIT blob under the given name", async () => {
+  it("saves the bytes as a FIT blob under the given name and frees the URL only later", async () => {
+    vi.useFakeTimers();
     const createObjectURL = vi.fn((blob: Blob) => (void blob, "blob:ride"));
     const revokeObjectURL = vi.fn();
     vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
@@ -22,6 +24,11 @@ describe("downloadFitFile", () => {
     const anchor = click.mock.contexts[0] as HTMLAnchorElement;
     expect(anchor.download).toBe("wattsmith_ride_2026-09-27.fit");
     expect(anchor.href).toBe("blob:ride");
+    // The browser may still be reading the URL when click returns.
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(REVOKE_DELAY_MS - 1);
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:ride");
   });
 });
