@@ -9,7 +9,7 @@
 
 ## Immediate High-Risk Surfaces
 
-- OAuth callback state/scope behavior, expired-state handling, token refresh rotation, concurrent refresh conflict resolution, disconnect, and webhook deauthorization need broader route-level mocked-HTTP coverage.
+- OAuth callback state/scope behavior, expired-state handling, token refresh rotation, concurrent refresh conflict resolution, and webhook deauthorization need broader route-level mocked-HTTP coverage.
 - Cache expiry/invalidation, lazy pagination end conditions, Strava `401`/`429`/partial responses, and connection revocation need route tests.
 - Analytics calculations need continued fixtures for pauses, gaps, sparse streams, historical FTP boundaries, rolling-window validity, and source response changes. Current unit tests cover zones, weighted power, peaks, gaps, missing metrics, downsampling extrema, and a stable synthetic fixture.
 - Profile and rename component coverage should expand to full workspace unsaved-action confirmation and blur/Enter de-duplication.
