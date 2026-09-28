@@ -16,7 +16,7 @@ Wattsmith analyzes cycling power data, explains race and workout demands, turns 
 
 - Strava data is visible only to the connected athlete. Coach views will exclude raw and derived Strava displays unless future written policy approval explicitly permits them.
 - Raw and derived Strava caches expire within seven days. Full history means lazy backward pagination, not eager permanent replication.
-- Tokens are encrypted, rotated refresh tokens are persisted, OAuth scopes are product-visible, disconnect revokes access and clears cached records, and webhook deletion/deauthorization is idempotent.
+- Tokens are encrypted, rotated refresh tokens are persisted, OAuth scopes are product-visible, disconnect deletes the stored connection and cached records and revokes Strava access best-effort, and webhook deletion/deauthorization is idempotent.
 - New Strava applications have limited athlete capacity and require Strava review to scale.
 - Webhooks are preferred over polling; rate limits, revocation, incomplete streams, estimated power, and missing data are visible product states.
 
