@@ -37,17 +37,13 @@ const PROFILE_FIELDS: Record<number, Record<number, BaseType>> = {
   21: { 0: "enum", 1: "enum", 253: "uint32" },
   // record: heart_rate, cadence, distance, speed, power, timestamp
   20: { 3: "uint8", 4: "uint8", 5: "uint32", 6: "uint16", 7: "uint16", 253: "uint32" },
-  // lap: event, event_type, start_time, elapsed, timer, distance, avg/max HR, avg/max cadence,
-  // avg/max power, lap_trigger, sport, sub_sport, total_work, timestamp, message_index
-  19: {
-    0: "enum", 1: "enum", 2: "uint32", 7: "uint32", 8: "uint32", 9: "uint32", 15: "uint8", 16: "uint8", 17: "uint8",
-    18: "uint8", 19: "uint16", 20: "uint16", 24: "enum", 25: "enum", 39: "enum", 41: "uint32", 253: "uint32", 254: "uint16",
-  },
+  // lap: start_time, elapsed, timer, avg HR, avg cadence, avg power, timestamp, message_index
+  19: { 2: "uint32", 7: "uint32", 8: "uint32", 15: "uint8", 17: "uint8", 19: "uint16", 253: "uint32", 254: "uint16" },
   // session: event, event_type, start_time, sport, sub_sport, elapsed, timer, distance, avg/max HR,
-  // avg/max cadence, avg/max power, first_lap_index, num_laps, trigger, normalized_power, total_work
+  // avg cadence, avg/max power, first_lap_index, num_laps, trigger, normalized_power, total_work
   18: {
     0: "enum", 1: "enum", 2: "uint32", 5: "enum", 6: "enum", 7: "uint32", 8: "uint32", 9: "uint32", 16: "uint8",
-    17: "uint8", 18: "uint8", 19: "uint8", 20: "uint16", 21: "uint16", 25: "uint16", 26: "uint16", 28: "enum",
+    17: "uint8", 18: "uint8", 20: "uint16", 21: "uint16", 25: "uint16", 26: "uint16", 28: "enum",
     34: "uint16", 48: "uint32", 253: "uint32", 254: "uint16",
   },
   // activity: total_timer_time, num_sessions, type, event, event_type, local_timestamp, timestamp
@@ -70,18 +66,23 @@ function expectedTotals(rows: RecorderRow[]) {
     riding.map((row) => row[key]).filter((value): value is number => value !== null);
   const avg = (list: number[]) => Math.round(list.reduce((sum, value) => sum + value, 0) / list.length);
   const power = values("power");
-  return {
+  const lap = {
     start_time: at(rows[0].t),
     timestamp: at(rows.at(-1)!.t + 1),
     total_elapsed_time: rows.at(-1)!.t + 1 - rows[0].t,
     total_timer_time: riding.length,
     avg_power: avg(power),
-    max_power: Math.max(...power),
     avg_cadence: avg(values("cadence")),
-    max_cadence: Math.max(...values("cadence")),
     avg_heart_rate: avg(values("heartRate")),
-    max_heart_rate: Math.max(...values("heartRate")),
-    total_work: power.reduce((sum, value) => sum + value, 0),
+  };
+  return {
+    lap,
+    session: {
+      ...lap,
+      max_power: Math.max(...power),
+      max_heart_rate: Math.max(...values("heartRate")),
+      total_work: power.reduce((sum, value) => sum + value, 0),
+    },
   };
 }
 
@@ -212,13 +213,9 @@ describe("FIT encoder round trip", () => {
     expect(runs.map((run) => run[0].segmentIndex)).toEqual([0, 1, 2, 3, 4, 5]);
     expect(fit.laps).toHaveLength(runs.length);
     runs.forEach((run, i) => {
-      expect(fit.laps![i], `lap ${i}`).toMatchObject({
-        ...expectedTotals(run),
+      expect(fit.laps![i], `lap ${i}`).toEqual({
+        ...expectedTotals(run).lap,
         message_index: { value: i, reserved: false, selected: false },
-        event: "lap",
-        event_type: "stop",
-        sport: "cycling",
-        sub_sport: "virtual_activity",
       });
     });
   });
@@ -227,8 +224,9 @@ describe("FIT encoder round trip", () => {
     const rows = input.rows;
     const lastRecord = fit.records!.at(-1) as Message;
     expect(fit.sessions).toHaveLength(1);
+    expect(fit.sessions![0]).not.toHaveProperty("max_cadence");
     expect(fit.sessions![0]).toMatchObject({
-      ...expectedTotals(rows),
+      ...expectedTotals(rows).session,
       sport: "cycling",
       sub_sport: "virtual_activity",
       total_distance: lastRecord.distance,

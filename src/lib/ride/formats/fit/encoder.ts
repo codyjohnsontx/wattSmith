@@ -60,22 +60,15 @@ function optional(value: number | null): number | undefined {
   return value === null ? undefined : value;
 }
 
-function summaryFields(summary: FitTotals, startSeconds: number) {
+function lapFields(summary: FitTotals, startSeconds: number) {
   return {
     timestamp: startSeconds + summary.endT,
     start_time: startSeconds + summary.startT,
     total_elapsed_time: scaled((summary.endT - summary.startT) * 1000, 1000),
     total_timer_time: scaled(summary.timerSeconds * 1000, 1000),
-    total_distance: scaled(summary.distanceCm, 100),
     avg_power: optional(summary.avgPower),
-    max_power: optional(summary.maxPower),
     avg_cadence: optional(summary.avgCadence),
-    max_cadence: optional(summary.maxCadence),
     avg_heart_rate: optional(summary.avgHeartRate),
-    max_heart_rate: optional(summary.maxHeartRate),
-    total_work: optional(summary.totalWork),
-    sport: "cycling" as const,
-    sub_sport: "virtual_activity" as const,
   };
 }
 
@@ -190,7 +183,7 @@ export function encodeRideFit(input: FitRideInput): Uint8Array<ArrayBuffer> {
   summary.laps.forEach((lap, index) => {
     writer.writeMessage(
       "lap",
-      { message_index: { value: index }, event: "lap", event_type: "stop", lap_trigger: "manual", ...summaryFields(lap, startSeconds) },
+      { message_index: { value: index }, ...lapFields(lap, startSeconds) },
       null,
       index === summary.laps.length - 1,
     );
@@ -205,8 +198,14 @@ export function encodeRideFit(input: FitRideInput): Uint8Array<ArrayBuffer> {
       trigger: "activity_end",
       first_lap_index: 0,
       num_laps: summary.laps.length,
+      sport: "cycling",
+      sub_sport: "virtual_activity",
+      ...lapFields(summary.session, startSeconds),
+      total_distance: scaled(summary.session.distanceCm, 100),
+      max_power: optional(summary.session.maxPower),
+      max_heart_rate: optional(summary.session.maxHeartRate),
+      total_work: optional(summary.session.totalWork),
       normalized_power: optional(summary.session.normalizedPower),
-      ...summaryFields(summary.session, startSeconds),
     },
     null,
     true,

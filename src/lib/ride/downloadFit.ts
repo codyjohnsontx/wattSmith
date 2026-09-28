@@ -2,9 +2,9 @@ export const REVOKE_DELAY_MS = 10_000;
 
 // Browser only: saves an encoded ride as a .fit file. Pass encodeRideFit's
 // bytes and rideFitFileName's name.
-export function downloadFitFile(bytes: Uint8Array<ArrayBuffer>, fileName: string, doc: Document = document) {
+export function downloadFitFile(bytes: Uint8Array<ArrayBuffer>, fileName: string) {
   const url = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.ant.fit" }));
-  const anchor = doc.createElement("a");
+  const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = fileName;
   anchor.click();

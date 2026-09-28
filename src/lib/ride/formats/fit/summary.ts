@@ -46,7 +46,6 @@ export interface FitTotals {
   avgPower: number | null;
   maxPower: number | null;
   avgCadence: number | null;
-  maxCadence: number | null;
   avgHeartRate: number | null;
   maxHeartRate: number | null;
   // Joules: 1 W for 1 s per recorded second.
@@ -132,7 +131,6 @@ function totals(rows: RecorderRow[], records: Map<number, FitRecord>): FitTotals
     avgPower: mean(power),
     maxPower: max(power),
     avgCadence: mean(cadence),
-    maxCadence: max(cadence),
     avgHeartRate: mean(heartRate),
     maxHeartRate: max(heartRate),
     totalWork: power.length === 0 ? null : power.reduce((sum, value) => sum + value, 0),
