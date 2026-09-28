@@ -7,6 +7,7 @@ export const STRAVA_API_BASE_URL = "https://www.strava.com/api/v3";
 export const STRAVA_OAUTH_BASE_URL = "https://www.strava.com/oauth";
 export const REQUIRED_STRAVA_SCOPES = ["read", "activity:read_all"] as const;
 const STRAVA_REQUEST_TIMEOUT_MS = 15_000;
+const STRAVA_REVOKE_TIMEOUT_MS = 5_000;
 const refreshesByUser = new Map<string, Promise<string>>();
 
 export class StravaApiError extends Error {
@@ -30,9 +31,9 @@ export function hasRequiredScopes(scopes: string[]) {
   return REQUIRED_STRAVA_SCOPES.every((scope) => scopes.includes(scope));
 }
 
-async function stravaFetch(url: string, init: RequestInit) {
+async function stravaFetch(url: string, init: RequestInit, timeoutMs = STRAVA_REQUEST_TIMEOUT_MS) {
   try {
-    return await fetch(url, { ...init, signal: AbortSignal.timeout(STRAVA_REQUEST_TIMEOUT_MS) });
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
   } catch (error) {
     if (typeof error === "object" && error !== null && "name" in error && (error.name === "TimeoutError" || error.name === "AbortError")) {
       throw new StravaApiError("Strava did not respond before the request timed out.", 504, "timeout");
@@ -120,7 +121,7 @@ export async function revokeStravaToken(encryptedAccessToken: string) {
     },
     body: new URLSearchParams({ token: decryptStravaToken(encryptedAccessToken), token_type_hint: "access_token" }),
     cache: "no-store",
-  });
+  }, STRAVA_REVOKE_TIMEOUT_MS);
   if (!response.ok) {
     throw new StravaApiError("Strava access could not be revoked. Try disconnecting again.", 502, "revocation_failed");
   }
