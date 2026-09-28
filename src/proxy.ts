@@ -10,8 +10,7 @@ export const config = {
     "/api/profile/:path*",
     "/api/workouts/:path*",
     "/api/migration/:path*",
-    // /api/activities is left to its handlers: they return strava_disabled while Strava is off,
-    // then call requireUser() themselves.
+    "/api/activities/:path*",
   ],
 };
 
