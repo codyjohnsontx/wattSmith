@@ -29,9 +29,10 @@ describe("Strava off by default", () => {
     expect(isStravaEnabled()).toBe(true);
   });
 
-  it.each(Object.entries(routes))("returns strava_disabled from every %s handler", async (_name, load) => {
+  it.each(Object.entries(routes))("returns strava_disabled from every gated %s handler", async (name, load) => {
     vi.stubEnv("STRAVA_CLIENT_ID", "");
-    const handlers = Object.entries(await load()).filter(([method]) => ["GET", "POST", "DELETE"].includes(method));
+    const handlers = Object.entries(await load()).filter(([method]) =>
+      ["GET", "POST", "DELETE"].includes(method) && !(name === "integrations/strava" && method === "DELETE"));
     expect(handlers.length).toBeGreaterThan(0);
     for (const [, handler] of handlers) {
       const response = await (handler as (request: Request, context: unknown) => Promise<Response>)(

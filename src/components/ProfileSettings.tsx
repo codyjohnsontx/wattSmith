@@ -8,8 +8,9 @@ import type { IntegrationConnection } from "@/lib/integrations/types";
 import type { AthleteProfile } from "@/lib/workout/types";
 import { useEffect, useMemo, useState } from "react";
 
-export function ProfileSettings({ initialProfile, stravaEnabled }: { initialProfile: AthleteProfile; stravaEnabled: boolean }) {
+export function ProfileSettings({ initialProfile, stravaEnabled, hasStoredStravaConnection }: { initialProfile: AthleteProfile; stravaEnabled: boolean; hasStoredStravaConnection: boolean }) {
   const [profile, setProfile] = useState(initialProfile);
+  const [storedStravaConnection, setStoredStravaConnection] = useState(hasStoredStravaConnection);
   const [integrations, setIntegrations] = useState<IntegrationConnection[]>([]);
   const workout = useMemo(() => ({ ...cloneDefaultWorkout(), ftp: profile.ftp }), [profile.ftp]);
 
@@ -36,6 +37,11 @@ export function ProfileSettings({ initialProfile, stravaEnabled }: { initialProf
     return latest;
   };
 
+  const disconnectStrava = async () => {
+    await apiRequest<void>("/api/integrations/strava", { method: "DELETE" });
+    setStoredStravaConnection(false);
+  };
+
   return (
     <div className="mx-auto w-full max-w-[1520px] px-4 py-5 sm:px-6 lg:px-8">
       <ProfilePanel
@@ -43,6 +49,7 @@ export function ProfileSettings({ initialProfile, stravaEnabled }: { initialProf
         workout={workout}
         integrations={integrations}
         stravaEnabled={stravaEnabled}
+        onDisconnectStrava={storedStravaConnection ? disconnectStrava : undefined}
         onSave={saveProfile}
         onReload={reloadProfile}
       />

@@ -37,7 +37,7 @@ Required services and credentials are documented in [`.env.example`](.env.exampl
 
 ## Strava (optional, off by default)
 
-Strava is off unless `STRAVA_CLIENT_ID` is set. Strava requires developers to hold a paid Strava subscription to run an API application, so the public deployment runs with Strava off. With it off, the Activities page, the Strava connection link in settings, and every `/api/integrations/strava/*` and `/api/activities/*` route are switched off (the routes return `404` with code `strava_disabled`). The rest of Wattsmith and the `/demo` page work unchanged.
+Strava is off unless `STRAVA_CLIENT_ID` is set. Strava requires developers to hold a paid Strava subscription to run an API application, so the public deployment runs with Strava off. With it off, the Activities page, the Strava connection link in settings, and every `/api/integrations/strava/*` and `/api/activities/*` route are switched off (the routes return `404` with code `strava_disabled`). The one exception is disconnecting: `DELETE /api/integrations/strava` stays available, and settings shows a "Disconnect Strava" button to anyone who still has a stored connection, so they can always remove it. The rest of Wattsmith and the `/demo` page work unchanged.
 
 The free path is manual: download the ride's `.fit` file and upload it at [strava.com/upload](https://www.strava.com/upload/select) yourself. In-browser ride recording with a `.fit` download is planned work and not in the app yet.
 

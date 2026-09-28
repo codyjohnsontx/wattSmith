@@ -1,7 +1,7 @@
 import { authenticationErrorResponse, requireUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { invalidateStravaCache } from "@/lib/server/strava/cache";
-import { hasRequiredScopes, revokeStravaToken, StravaApiError } from "@/lib/server/strava/client";
+import { hasRequiredScopes, revokeStravaToken } from "@/lib/server/strava/client";
 import { isStravaEnabled, stravaDisabledResponse } from "@/lib/server/strava/config";
 
 export async function GET() {
@@ -25,12 +25,11 @@ export async function GET() {
 }
 
 export async function DELETE() {
-  if (!isStravaEnabled()) return stravaDisabledResponse();
   try {
     const user = await requireUser();
     const connection = await db.stravaConnection.findUnique({ where: { userId: user.id } });
     if (connection) {
-      await revokeStravaToken(connection.encryptedAccessToken);
+      await revokeStravaToken(connection.encryptedAccessToken).catch(() => undefined);
     }
     await invalidateStravaCache(user.id);
     await db.stravaConnection.deleteMany({ where: { userId: user.id } });
@@ -38,9 +37,6 @@ export async function DELETE() {
   } catch (error) {
     const response = authenticationErrorResponse(error);
     if (response) return response;
-    if (error instanceof StravaApiError) {
-      return Response.json({ error: error.message, code: error.code }, { status: error.status });
-    }
     throw error;
   }
 }

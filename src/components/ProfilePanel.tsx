@@ -12,6 +12,7 @@ interface ProfilePanelProps {
   workout: Workout;
   integrations: IntegrationConnection[];
   stravaEnabled: boolean;
+  onDisconnectStrava?: () => Promise<void>;
   onSave: (profile: AthleteProfile) => Promise<AthleteProfile>;
   onReload: () => Promise<AthleteProfile>;
   onNavigate?: ComponentProps<typeof Link>["onNavigate"];
@@ -23,11 +24,12 @@ function inputClassName() {
   return "mt-1 h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300";
 }
 
-export function ProfilePanel({ profile, workout, integrations, stravaEnabled, onSave, onReload, onNavigate }: ProfilePanelProps) {
+export function ProfilePanel({ profile, workout, integrations, stravaEnabled, onDisconnectStrava, onSave, onReload, onNavigate }: ProfilePanelProps) {
   const [draft, setDraft] = useState(profile);
   const [savedBaseline, setSavedBaseline] = useState(profile);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error" | "conflict">("idle");
   const [error, setError] = useState("");
+  const [stravaStatus, setStravaStatus] = useState("");
   const savingRef = useRef(false);
   const savedBaselineRef = useRef(profile);
   const isDirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(savedBaseline), [draft, savedBaseline]);
@@ -38,6 +40,16 @@ export function ProfilePanel({ profile, workout, integrations, stravaEnabled, on
     savedBaselineRef.current = profile;
     setSavedBaseline(profile);
   }, [profile]);
+
+  const disconnectStrava = async () => {
+    if (!onDisconnectStrava) return;
+    try {
+      await onDisconnectStrava();
+      setStravaStatus("Strava disconnected.");
+    } catch (disconnectError) {
+      setStravaStatus(disconnectError instanceof Error ? disconnectError.message : "Strava could not be disconnected.");
+    }
+  };
 
   const save = async () => {
     if (savingRef.current || !isDirty) return;
@@ -270,7 +282,12 @@ export function ProfilePanel({ profile, workout, integrations, stravaEnabled, on
             <Link href="/activities" onNavigate={onNavigate} className="mt-4 inline-block text-sm font-semibold text-cyan-200 underline underline-offset-4">
               Manage Strava connection
             </Link>
+          ) : onDisconnectStrava ? (
+            <button type="button" onClick={() => void disconnectStrava()} className="mt-4 border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300">
+              Disconnect Strava
+            </button>
           ) : null}
+          {stravaStatus ? <p className="mt-3 text-sm text-slate-400" aria-live="polite">{stravaStatus}</p> : null}
         </section>
       </div>
     </section>
