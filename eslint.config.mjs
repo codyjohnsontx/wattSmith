@@ -27,11 +27,13 @@ const eslintConfig = defineConfig([
         {
           patterns: [
             {
-              // Allow-list: sibling files and platform-neutral app modules only.
-              // Packages, Node built-ins, "../" escapes and every other alias fail.
-              regex: "^(?!\\./|@/lib/(workout|ride/engine|ride/formats)(/|$)|@/lib/activity/types$)",
+              // Allow-list: sibling files, platform-neutral app modules and the
+              // pure-JS FIT writer. Other packages, Node built-ins, "../"
+              // escapes and every other alias fail.
+              regex:
+                "^(?!\\./|@/lib/(workout|ride/engine|ride/formats)(/|$)|@/lib/activity/types$|@markw65/fit-file-writer$)",
               message:
-                "The ride engine is platform neutral: import only ./siblings, @/lib/workout, @/lib/activity/types and @/lib/ride/{engine,formats}.",
+                "The ride engine is platform neutral: import only ./siblings, @/lib/workout, @/lib/activity/types, @/lib/ride/{engine,formats} and @markw65/fit-file-writer.",
             },
           ],
         },

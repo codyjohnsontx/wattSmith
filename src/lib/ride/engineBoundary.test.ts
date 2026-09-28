@@ -54,4 +54,11 @@ describe("ride engine platform boundary", () => {
     ].join("\n");
     expect(await ruleIds(code)).toEqual([]);
   }, 30_000);
+
+  it("lint accepts the pure-JS FIT writer but not its internals", async () => {
+    expect(await ruleIds('import { FitWriter } from "@markw65/fit-file-writer";\nexport const x = FitWriter;')).toEqual([]);
+    expect(
+      await ruleIds('import { FitWriter } from "@markw65/fit-file-writer/build/src/fit-encode";\nexport const x = FitWriter;'),
+    ).toContain("no-restricted-imports");
+  }, 30_000);
 });
