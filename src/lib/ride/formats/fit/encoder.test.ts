@@ -5,6 +5,8 @@ import { readFitMessages } from "fit-file-parser/raw";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { RecorderRow } from "@/lib/ride/engine/types";
 import { FIT_FIXTURE_START_MS, FIT_FIXTURE_WORKOUT_NAME, recordFitFixtureRide } from "@/lib/ride/fitTestUtils";
+import { createRideHarness } from "@/lib/ride/testUtils";
+import { exportTestFixtures } from "@/lib/workout/exportFixtures";
 import { encodeRideFit } from "./encoder";
 import type { FitRideInput } from "./encoder";
 import { rideFitFileName } from "./fileName";
@@ -178,7 +180,6 @@ describe("FIT encoder round trip", () => {
       total_distance: lastRecord.distance,
       num_laps: fit.laps!.length,
       first_lap_index: 0,
-      threshold_power: input.ftp,
       normalized_power: normalizedPower(riddenPower),
       event: "session",
       event_type: "stop",
@@ -232,7 +233,6 @@ describe("FIT encoder edge cases", () => {
     expect(fit.device_infos).toHaveLength(1);
     expect(fit.sessions![0]).not.toHaveProperty("avg_power");
     expect(fit.sessions![0]).not.toHaveProperty("normalized_power");
-    expect(fit.sessions![0]).not.toHaveProperty("threshold_power");
   });
 
   it("ends on the pause's own timer stop when the ride finishes paused", async () => {
@@ -241,6 +241,28 @@ describe("FIT encoder edge cases", () => {
     expect(fit.records).toHaveLength(2);
     expect(fit.events!.map((event) => event.event_type)).toEqual(["start", "stop_all"]);
     expect(fit.sessions![0]).toMatchObject({ total_elapsed_time: 4, total_timer_time: 2 });
+  });
+
+  it("tags only trainers named KICKR as Wahoo", async () => {
+    const fit = await decode(encodeRideFit({ ...base, rows: [row(0)], trainerName: "kickr-clone" }));
+    expect(fit.device_infos![1]).toMatchObject({ manufacturer: "development", product_name: "kickr-clone" });
+  });
+
+  it("keeps the timer running across a skip", async () => {
+    const workout = exportTestFixtures.find((fixture) => fixture.name === FIT_FIXTURE_WORKOUT_NAME)!;
+    const harness = createRideHarness({ workout, ftp: workout.ftp });
+    await harness.start();
+    harness.advance(60_000);
+    harness.command("skip");
+    harness.advance(60_000);
+    harness.command("stop");
+    const rows = harness.state.recorder.rows;
+    expect(new Set(rows.map((r) => r.segmentIndex)).size).toBe(2);
+
+    const fit = await decode(encodeRideFit({ ...base, rows }));
+    expect(fit.events!.map((event) => event.event_type)).toEqual(["start", "stop_all"]);
+    expect(fit.records).toHaveLength(rows.length);
+    expect(fit.sessions![0]).toMatchObject({ total_elapsed_time: rows.length, total_timer_time: rows.length });
   });
 
   it("keeps only printable ASCII in device names", async () => {

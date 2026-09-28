@@ -37,7 +37,6 @@ export async function recordFitFixtureRide(): Promise<FitRideInput> {
     rows: harness.state.recorder.rows,
     serialNumber: 0x5eed_1234,
     softwareVersion: 0.1,
-    ftp: workout.ftp,
     trainerName: "KICKR CORE 5A1B",
     heartRateMonitorName: "TICKR 1234",
   };

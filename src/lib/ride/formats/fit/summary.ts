@@ -137,6 +137,9 @@ export function summarizeRide(rows: RecorderRow[]): FitRideSummary {
   if (rows.length === 0) throw new Error("A FIT activity needs at least one recorded second.");
 
   // Paused seconds are timer-stopped: no record, bracketed by timer events.
+  // Skips and clock gaps need no timer events: a skip moves the workout
+  // position but not the ride clock, and the reducer clamps a clock gap to
+  // maxTickGapMs (2 s), so neither leaves idle time in the recorded rows.
   const records: FitRecord[] = [];
   const timerEvents: FitTimerEvent[] = [];
   let distanceMm = 0;

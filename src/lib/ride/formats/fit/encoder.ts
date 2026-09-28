@@ -18,7 +18,6 @@ export interface FitRideInput {
   serialNumber: number;
   // Wattsmith version, e.g. 0.1 for 0.1.0 (FIT keeps hundredths).
   softwareVersion: number;
-  ftp?: number;
   trainerName?: string;
   heartRateMonitorName?: string;
 }
@@ -121,7 +120,7 @@ export function encodeRideFit(input: FitRideInput): Uint8Array<ArrayBuffer> {
       {
         timestamp: startSeconds,
         device_index: TRAINER_DEVICE_INDEX,
-        manufacturer: /^kickr/i.test(input.trainerName) ? "wahoo_fitness" : "development",
+        manufacturer: input.trainerName.startsWith("KICKR") ? "wahoo_fitness" : "development",
         source_type: "bluetooth_low_energy",
         product_name: fitString(input.trainerName),
       },
@@ -191,7 +190,6 @@ export function encodeRideFit(input: FitRideInput): Uint8Array<ArrayBuffer> {
       first_lap_index: 0,
       num_laps: summary.laps.length,
       normalized_power: optional(summary.session.normalizedPower),
-      threshold_power: input.ftp,
       ...summaryFields(summary.session, startSeconds),
     },
     null,
