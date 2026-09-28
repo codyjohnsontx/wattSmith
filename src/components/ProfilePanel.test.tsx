@@ -56,10 +56,10 @@ describe("ProfilePanel save reliability", () => {
 });
 
 describe("ProfilePanel Strava integration", () => {
-  it("hides the Strava connection link and points to manual FIT upload when Strava is off", () => {
+  it("hides the Strava connection link and explains manual FIT upload is coming when Strava is off", () => {
     render(<ProfilePanel profile={defaultProfile} workout={cloneDefaultWorkout()} integrations={[{ provider: "strava", status: "not_connected" }]} stravaEnabled={false} onSave={vi.fn()} onReload={vi.fn()} />);
     expect(screen.queryByRole("link", { name: "Manage Strava connection" })).not.toBeInTheDocument();
-    expect(screen.getByText(/upload it to Strava yourself/)).toBeInTheDocument();
+    expect(screen.getByText(/Strava is not connected on this deployment\. Once ride recording ships/)).toBeInTheDocument();
     expect(screen.getByText("Off")).toBeInTheDocument();
   });
 

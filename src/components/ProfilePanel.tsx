@@ -263,7 +263,7 @@ export function ProfilePanel({ profile, workout, integrations, stravaEnabled, on
           <p className="mt-2 text-sm leading-6 text-slate-400">
             {stravaEnabled
               ? "Strava is a separate, revocable activity-data connection. Cached activity data expires within seven days."
-              : "Strava is not enabled on this deployment. To get a ride onto Strava, download its .fit file and upload it to Strava yourself."}
+              : "Strava is not connected on this deployment. Once ride recording ships, recorded rides will download as a .fit file you can upload to Strava yourself."}
           </p>
           <div className="mt-4 space-y-2">
             {integrations.map((connection) => (
