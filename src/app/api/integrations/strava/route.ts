@@ -24,6 +24,9 @@ export async function GET() {
   }
 }
 
+// Deliberately not gated on isStravaEnabled(): a user must always be able to remove a stored
+// connection, even after Strava is switched off. Revocation is best-effort for the same reason
+// (it fails without Strava credentials), so it never blocks the local delete.
 export async function DELETE() {
   try {
     const user = await requireUser();
