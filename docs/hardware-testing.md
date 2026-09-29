@@ -51,7 +51,7 @@ Automated tests share one reading of the specifications with the code under test
 
 ### Steps 1-10: diagnostics page (`/ride/devices`)
 
-Brought by [pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20) (in review). Once it is merged, open `/ride/devices` (sign in first). Each step has a matching row in the page's **Hardware test script** panel that turns **Pass**, **Fail** or **Waiting** on its own. Steps marked **Observe** need your eyes and a note in the results. To try the page without a trainer, open `/ride/devices?device=fake`: a simulated FTMS trainer with "Unplug" and "Another app takes control" buttons.
+Brought by [pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20) (in review), which merges only after these steps pass. Check out its branch (`fm/ws-pr4-bluetooth`, or `main` once it is merged), run `npm run dev`, and open `http://localhost:3000/ride/devices` (sign in first). Each step has a matching row in the page's **Hardware test script** panel that turns **Pass**, **Fail** or **Waiting** on its own. Steps marked **Observe** need your eyes and a note in the results. To try the page without a trainer, open `/ride/devices?device=fake`: a simulated FTMS trainer with "Unplug" and "Another app takes control" buttons.
 
 | # | Do this | Pass looks like |
 | --- | --- | --- |
@@ -93,7 +93,7 @@ Until step 15 has a download button, the golden file `docs/ride-fixtures/wattsmi
 
 ### Byte capture
 
-Brought by [pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20). During steps 4 and 5, press **Record 30 s of raw notifications** on the diagnostics page. Pedal and set a target or two while it records. The page downloads `kickr-core-<firmware>.json`. Commit it under `src/lib/ride/trainer/web/fixtures/` unchanged: the codec tests then decode every real notification in CI from then on.
+Brought by [pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20) (in review). During steps 4 and 5, press **Record 30 s of raw notifications** on the diagnostics page, served from the same branch as above. Pedal and set a target or two while it records. The page downloads `kickr-core-<firmware>.json`. Commit it under `src/lib/ride/trainer/web/fixtures/` unchanged: the codec tests then decode every real notification in CI from then on.
 
 ## Results Matrix
 
