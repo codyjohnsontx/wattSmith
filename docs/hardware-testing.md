@@ -53,7 +53,7 @@ Automated tests share one reading of the specifications with the code under test
 
 ### Steps 1-10: diagnostics page (`/ride/devices`)
 
-Brought by [pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20) (in review), which merges only after these steps pass. Check out its branch (`fm/ws-pr4-bluetooth`, or `main` once it is merged), run `npm run dev`, and open `http://localhost:3000/ride/devices` (sign in first). Run these steps and the [byte capture](#byte-capture) there before it merges. Each step has a matching row in the page's **Hardware test script** panel that turns **Pass**, **Fail** or **Waiting** on its own. Steps marked **Observe** need your eyes and a note in the results. To try the page without a trainer, open `/ride/devices?device=fake`: a simulated FTMS trainer with **Unplug simulated trainer** and **Another app takes control** buttons.
+Brought by [pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20) (in review), which merges only after these steps pass. Check out its branch (`fm/ws-pr4-bluetooth`), run `npm run dev`, and open `http://localhost:3000/ride/devices` (sign in first). Run these steps and the [byte capture](#byte-capture) there before it merges. Each step has a matching row in the page's **Hardware test script** panel that turns **Pass**, **Fail** or **Waiting** on its own. Steps marked **Observe** need your eyes and a note in the results. To try the page without a trainer, open `/ride/devices?device=fake`: a simulated FTMS trainer with **Unplug simulated trainer** and **Another app takes control** buttons.
 
 | # | Do this | Pass looks like |
 | --- | --- | --- |
@@ -132,7 +132,7 @@ Legend: ✅ Pass · ❌ Fail · ⚠️ Partial (works with caveats, note them) �
 | 17 | Wahoo app via Strava sync (optional) | Strava upload (planned) | ⬜ | |
 | - | Byte capture committed | Pull request 20 (in review) | ⬜ | File: |
 
-For a re-run (new firmware, new commit, another trainer), add a row here instead of overwriting the matrix above.
+For a re-run (new firmware, new commit, another trainer), add a row here instead of overwriting the matrix above. Re-runs after pull request 20 merges use `main`.
 
 | Date | Commit | Firmware | Chrome | macOS | Steps passed | Power range | 150 W settle | 250 W settle | Lowest target | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
