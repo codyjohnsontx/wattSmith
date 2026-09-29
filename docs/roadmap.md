@@ -10,16 +10,16 @@ The first trainer target is the Wahoo KICKR CORE over Web Bluetooth. The current
 
 ## Product Boundaries
 
-Wattsmith builds, imports, and exports structured workouts, controls a smart trainer to ride them (ride mode is in progress, see Phase 3.5), records each ride as a FIT file, and analyzes cycling power data to shape new workouts. It does not replace Strava history or social features, host a virtual world or racing, depend on a paid third-party service for its core path, expose one athlete's Strava API data to another user, or add generative coaching before deterministic calculations are trusted.
+Wattsmith builds, imports, and exports structured workouts, is adding smart trainer control to ride them and FIT recording of each ride (ride mode is in progress, see Phase 3.5), and analyzes cycling power data to shape new workouts. It does not replace Strava history or social features, host a virtual world or racing, depend on a paid third-party service for its core path, expose one athlete's Strava API data to another user, or add generative coaching before deterministic calculations are trusted.
 
-Getting a ride to Strava is manual by default: download the `.fit` file and upload it at strava.com. Strava API features (analysis today, upload later) are optional and off unless a deployment configures its own Strava app, because Strava now requires a paid subscription to hold an API application. The planned public deployment will run with Strava off.
+Once ride recording ships, the planned default path to Strava is manual: download the `.fit` file and upload it at strava.com. Strava API features (analysis today, upload later) are optional and off unless a deployment configures its own Strava app, because Strava now requires a paid Strava subscription for Standard Tier API applications (Extended Access Tier applications are exempt but need Strava's review). Wattsmith would run as a Standard Tier application, so the planned public deployment will run with Strava off.
 
 ## External Constraints
 
 - Web Bluetooth runs only in Chromium browsers (Chrome, Edge, Opera, Samsung Internet) on macOS, Windows, ChromeOS and Android, with Linux behind a flag, and only over HTTPS or localhost. Firefox, Safari and iOS have no Web Bluetooth, so every ride page needs a clear fallback, such as the simulated trainer. The chooser must open from a click, and after a page reload it must open again.
 - Only one app may control the KICKR CORE at a time. The rider must close Zwift, the Wahoo app or a head unit that holds control, and the app must notice when another app takes control.
 - Nothing about trainer control is hardware-verified until the owner runs the [hardware test script](hardware-testing.md) on a KICKR CORE. CI covers the engine, codecs and file formats against specifications and a simulated trainer only.
-- A Strava subscription is a prerequisite for holding a Strava API application. Strava stays off unless `STRAVA_CLIENT_ID` is set.
+- Standard Tier Strava API applications require a paid Strava subscription; Extended Access Tier applications are exempt. Strava stays off unless `STRAVA_CLIENT_ID` is set.
 - When Strava is on: Strava data is visible only to the connected athlete, and coach views will exclude raw and derived Strava displays unless future written policy approval explicitly permits them.
 - When Strava is on: raw and derived Strava caches expire within seven days. Full history means lazy backward pagination, not eager permanent replication.
 - When Strava is on: tokens are encrypted, rotated refresh tokens are persisted, OAuth scopes are product-visible, disconnect deletes the stored connection and cached records and revokes Strava access best-effort, and webhook deletion/deauthorization is idempotent. New Strava applications have limited athlete capacity and require Strava review to scale.
@@ -74,10 +74,10 @@ Ride structured workouts on a smart trainer from the browser, starting with the 
 - Merged: platform-neutral workout engine (`src/lib/ride/engine`) with pause, skip, back, extend, FTP bias, ERG write throttling, and a 1 Hz recorder, plus a seeded simulated trainer with failure injection. A lint rule keeps the engine free of browser and React code so a future phone app can reuse it.
 - Merged: `.zwo`, `.erg` and `.mrc` import into an unsaved builder draft with a warnings report.
 - Merged: FIT encoder that writes a recorded ride as a virtual cycling activity (Strava's Virtual Ride type), with a golden file in `docs/ride-fixtures/`. No page offers the download yet.
-- Merged: Strava off unless `STRAVA_CLIENT_ID` is set, with manual `.fit` upload as the free path.
+- Merged: Strava off unless `STRAVA_CLIENT_ID` is set.
 - In review: Web Bluetooth trainer layer (FTMS control first, Wahoo proprietary control only as an unsupported, flag-gated fallback) and the `/ride/devices` diagnostics page, in [pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20). It merges after the owner's [hardware test](hardware-testing.md) steps 1-10.
 - Planned: `/ride` page with live power, cadence and heart rate against the plan, controls, wake lock, and a crash-recovery buffer.
-- Planned: "Download .fit" on the ride finish screen.
+- Planned: "Download .fit" on the ride finish screen, with manual upload at strava.com as the free default path to Strava.
 - Planned: saved rides in Postgres with a history list that reuses the activity analysis view.
 - Planned: signed-out `/demo/ride` on the simulated trainer.
 - Planned: free public deployment (Vercel Hobby and Neon Free) with a production `/demo` link.

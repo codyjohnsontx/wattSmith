@@ -13,7 +13,7 @@ Wattsmith is an open-source indoor cycling training workspace. Build or import s
 - **Ride analysis**: power coverage, weighted power, IF, estimated TSS, Wattsmith zones, peak efforts, variability, durability comparisons, and data-quality notes, calculated with the FTP effective on the ride date from dated FTP history. Today the rides come from the optional Strava connection or the synthetic demo; FIT/TCX file import is roadmap work.
 - **Analysis to workout**: pick a peak demand from a ride and get an explained, editable workout draft (target, repeats, recovery) before anything is saved.
 - **Public demo**: [`/demo`](http://localhost:3000/demo) runs the same analysis engine and UI on synthetic data with no sign-in.
-- **Accounts**: Auth.js sign-in with GitHub, and Prisma/Postgres storage for profiles, FTP history and workouts, with every route scoped to the signed-in athlete.
+- **Accounts**: Auth.js sign-in with GitHub, and Prisma/Postgres storage for profiles, FTP history and workouts. Stored profile, FTP-history, workout and activity routes are scoped to the signed-in athlete.
 - **Strava analysis (optional, off by default)**: a separate, revocable Strava connection with encrypted tokens and caches capped at seven days. See [Strava (optional, off by default)](#strava-optional-off-by-default).
 
 ### Ride mode (in progress)
@@ -42,7 +42,7 @@ Required services and credentials are documented in [`.env.example`](.env.exampl
 
 ## Strava (optional, off by default)
 
-Strava is off unless `STRAVA_CLIENT_ID` is set. Strava requires developers to hold a paid Strava subscription to run an API application, so the planned public deployment will run with Strava off. With it off, the Activities page, the Strava connection link in settings, and every `/api/integrations/strava/*` and `/api/activities/*` route are switched off (the routes return `404` with code `strava_disabled`; for `/api/activities/*` that applies to signed-in callers, since anonymous callers get `401` from the auth proxy first). The one exception is disconnecting: `DELETE /api/integrations/strava` stays available, and settings shows a "Disconnect Strava" button to anyone who still has a stored connection, so they can always remove it. The rest of Wattsmith and the `/demo` page work unchanged.
+Strava is off unless `STRAVA_CLIENT_ID` is set. Strava requires a paid Strava subscription for Standard Tier API applications (Extended Access Tier applications are exempt but need Strava's review). Wattsmith would run as a Standard Tier application, so the planned public deployment will run with Strava off. With it off, the Activities page, the Strava connection link in settings, and every `/api/integrations/strava/*` and `/api/activities/*` route are switched off (the routes return `404` with code `strava_disabled`; for `/api/activities/*` that applies to signed-in callers, since anonymous callers get `401` from the auth proxy first). The one exception is disconnecting: `DELETE /api/integrations/strava` stays available, and settings shows a "Disconnect Strava" button to anyone who still has a stored connection, so they can always remove it. The rest of Wattsmith and the `/demo` page work unchanged.
 
 The free path is manual: download the ride's `.fit` file and upload it at [strava.com/upload](https://www.strava.com/upload/select) yourself. In-browser ride recording with a `.fit` download is planned work and not in the app yet.
 
