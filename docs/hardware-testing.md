@@ -33,9 +33,11 @@ On `main` today:
 
 Added by [pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20) (in review):
 
-- `src/lib/ride/trainer/web/codec.test.ts`: the Bluetooth byte codecs against vectors hand-encoded from the Bluetooth SIG specifications (`src/lib/ride/trainer/web/fixtures/spec-vectors.json`), plus any real `kickr-core-*.json` capture committed next to them.
-- `src/lib/ride/trainer/web/WebBluetoothTrainer.test.ts`: the connect sequence, control point procedures, range clamping, control taken by another app, reconnect after power loss, and silent-trainer handling, all against a simulated FTMS device.
+- `src/lib/ride/trainer/web/codec.test.ts`: the Bluetooth byte codecs against vectors hand-encoded from the Bluetooth SIG layouts (`src/lib/ride/trainer/web/fixtures/spec-vectors.json`): Fitness Machine Service v1.0 (Feature 4.3, Indoor Bike Data 4.9, Supported Power Range 4.14, Control Point 4.16, Status 4.17) and the GATT Specification Supplement for Indoor Bike Data, Cycling Power Measurement and Heart Rate Measurement. The file's `provenance` names the document, section and table behind each family. Any real `kickr-core-*.json` capture committed next to them is decoded too.
+- `src/lib/ride/trainer/web/WebBluetoothTrainer.test.ts`: against a simulated FTMS device, the connect sequence (Request Control, then Start or Resume), 150 W then 250 W, range clamping, one control point procedure at a time, a response slower than 1 s still completing its procedure, a procedure unanswered for 5 s rebuilding the session instead of sending the next command, an older target never written after a newer one, retry after "operation failed" with a stopped flywheel, control denied at connect or taken by another app, reconnect after power loss, giving up after 60 s, and a trainer silent from the first notification or with only Indoor Bike Data silent.
 - `src/lib/ride/trainer/web/diagnosticChecks.test.ts`: the pass/fail rules the diagnostics page shows for steps 1-10.
+
+One spec disagreement is handled in pull request 20's decoder: FTMS v1.0 defines the Indoor Bike Data Resistance Level as sint16, the current GATT Specification Supplement as uint8. The decoder picks the width from the payload length.
 
 Automated tests share one reading of the specifications with the code under test. A byte capture from a real trainer (see [Byte capture](#byte-capture)) is what breaks that circle.
 
@@ -46,25 +48,25 @@ Automated tests share one reading of the specifications with the code under test
 - KICKR CORE powered on, firmware updated in the Wahoo app.
 - In the Wahoo app, turn off **ERG Mode Power Smoothing** so the reported power is real. Then **fully close the Wahoo app**, Zwift, and any head unit that could control the trainer: only one app can control it at a time.
 - Chrome (or Edge) on the Mac, with Bluetooth allowed in System Settings > Privacy & Security > Bluetooth > Google Chrome. Without that permission the chooser is empty.
-- The page must be served over HTTPS or from `http://localhost` (`npm run dev`). Firefox, Safari and every browser on iPhone and iPad cannot use Web Bluetooth.
+- The page must be served over HTTPS or from `http://localhost` (`npm run dev`). Firefox, Safari and every browser on iPhone and iPad cannot use Web Bluetooth: the diagnostics page says so instead of failing.
 - Optional: heart rate strap on. Laptop on mains power.
 
 ### Steps 1-10: diagnostics page (`/ride/devices`)
 
-Brought by [pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20) (in review), which merges only after these steps pass. Check out its branch (`fm/ws-pr4-bluetooth`, or `main` once it is merged), run `npm run dev`, and open `http://localhost:3000/ride/devices` (sign in first). Each step has a matching row in the page's **Hardware test script** panel that turns **Pass**, **Fail** or **Waiting** on its own. Steps marked **Observe** need your eyes and a note in the results. To try the page without a trainer, open `/ride/devices?device=fake`: a simulated FTMS trainer with "Unplug" and "Another app takes control" buttons.
+Brought by [pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20) (in review), which merges only after these steps pass. Check out its branch (`fm/ws-pr4-bluetooth`, or `main` once it is merged), run `npm run dev`, and open `http://localhost:3000/ride/devices` (sign in first). Run these steps and the [byte capture](#byte-capture) there before it merges. Each step has a matching row in the page's **Hardware test script** panel that turns **Pass**, **Fail** or **Waiting** on its own. Steps marked **Observe** need your eyes and a note in the results. To try the page without a trainer, open `/ride/devices?device=fake`: a simulated FTMS trainer with "Unplug" and "Another app takes control" buttons.
 
 | # | Do this | Pass looks like |
 | --- | --- | --- |
 | 1 | Press **Connect trainer** and pick the KICKR in the chooser. Note the name shown, and whether it appears once or twice. | Row 1 passes and the status pill says **connected**. |
 | 2 | Look at **Services and characteristics**. | Row 2 passes: Fitness Machine (0x1826) and Cycling Power (0x1818) found. Note whether the Wahoo characteristic `a026e005` is present. |
 | 3 | Check the **Devices** panel (firmware, power range, control). | Row 3 passes: power, cadence and power target supported, and a power range (expected about 0-2000 W). Write down the range. |
-| 4 | Pedal. | Row 4 passes: power and cadence from Indoor Bike Data at least once a second, and the Cycling Power average within 5 W or 3% of the Indoor Bike Data average (whichever is larger), both averaged over 3 s. |
-| 5 | Keep a steady cadence. Press **Set 150 W**, wait for it to settle, then **Set 250 W**. Then try **Set 100 W** and **Set 30 W**. | Row 5 passes when a 150 W press and a later 250 W press both settle on the same connection. Each target must answer within 1 s and power must settle inside 5% of the target (the page judges within 6 s; expect about 3 s). Copy the response time, settle time and overshoot from the ERG control table. Record the lowest target the trainer can hold at your cadence. |
+| 4 | Pedal. | Row 4 passes: power and cadence from Indoor Bike Data at least once a second, and the Cycling Power average within 5 W or 3% of the Indoor Bike Data average (whichever is larger), both averaged over 3 s. A trainer without Cycling Power fails this row. |
+| 5 | Keep a steady cadence. Press **Set 150 W**, wait for it to settle, then **Set 250 W**. Then try **Set 100 W** and **Set 30 W**. | Row 5 passes when a 150 W press settles and a later 250 W press settles, on the same connection: 250 W first does not count. Each target must answer within 1 s (a slower answer still applies the target but fails the row; no answer within 5 s rebuilds the link) and power must settle inside 5% of the target (the page judges within 6 s; expect about 3 s). Copy the response time, settle time and overshoot from the ERG control table. Record the lowest target the trainer can hold at your cadence. |
 | 6 | At 150 W, stop pedaling for 15 s, then pedal again. | **Observe**: does resistance come back at 150 W without pressing anything? If the trainer answered "operation failed" while stopped, the log shows "Pedaling again: re-sending 150 W." |
-| 7 | Stop pedaling and wait 60 s. | **Observe**: does the link stay connected? Row 7 counts Fitness Machine Status events. If the log shows the page restarting notifications or rebuilding the link while you are stopped, write it down: the KICKR goes quiet when idle. |
-| 8 | Set 150 W, then unplug the trainer's power for 10 s and plug it back in. | The page shows an amber **Reconnecting** banner. Row 8 passes only when the link comes back without the chooser and the trainer accepts a target afterwards (the page re-sends the last one). Then reload the page: the chooser is expected to be needed again. Note whether `chrome://flags/#enable-web-bluetooth-new-permissions-backend` is on. |
+| 7 | Stop pedaling and wait 60 s. | **Observe**: does the link stay connected? Row 7 counts Fitness Machine Status events. The page expects the trainer to keep notifying: after 3 s without data it restarts notifications and after 10 s it rebuilds the link. If the log shows that loop while you are stopped, write it down: the KICKR goes quiet when idle. |
+| 8 | Set 150 W, then unplug the trainer's power for 10 s and plug it back in. | The page shows an amber **Reconnecting** banner. Row 8 passes only when the link comes back without the chooser and the trainer accepts a Set Target Power afterwards: the page re-sends the last target by itself. If no target was set before unplugging, set one after reconnecting. If the page gives up after 60 s, row 8 fails and a **Reconnect** button appears. Then reload the page: the chooser is expected to be needed again. Note whether `chrome://flags/#enable-web-bluetooth-new-permissions-backend` is on. |
 | 9 | Press **Connect heart rate** and pick the strap. Disconnect it and connect it again. | Row 9 passes: first reading within 5 s. |
-| 10 | Open the Wahoo app on your phone while the page is connected. | **Observe**: does the Wahoo app connect and read power? Does the page lose control (red "Another app took control" banner, counted in row 10)? Write down the firmware version the Wahoo app shows: Wahoo's release notes could not be fetched, so this is where the KICKR CORE's FTMS firmware gets recorded. |
+| 10 | Open the Wahoo app on your phone while the page is connected. | **Observe**: does the Wahoo app connect and read power? Does the page lose control (red "Another app took control" banner, counted in row 10)? If the Wahoo app or Zwift already has control when you connect, the page shows "Another app has control of the trainer" and keeps the target buttons off until you close that app and press **Retry**. Write down the firmware version the Wahoo app shows: Wahoo's release notes could not be fetched, so this is where the KICKR CORE's FTMS firmware gets recorded. |
 
 The pull request is the source of truth for the page's exact wording and thresholds. If it changes them before merging, update this table to match.
 
@@ -130,9 +132,15 @@ Legend: ✅ Pass · ❌ Fail · ⚠️ Partial (works with caveats, note them) �
 | 17 | Wahoo app via Strava sync (optional) | Strava upload (planned) | ⬜ | |
 | - | Byte capture committed | Pull request 20 (in review) | ⬜ | File: |
 
+For a re-run (new firmware, new commit, another trainer), add a row here instead of overwriting the matrix above.
+
+| Date | Commit | Firmware | Chrome | macOS | Steps passed | Power range | 150 W settle | 250 W settle | Lowest target | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | | | | | |
+
 ## Wahoo proprietary fallback (unsupported)
 
-FTMS is the supported control path. [Pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20) also carries a fallback through Wahoo's proprietary trainer characteristic for KICKR firmware without FTMS. It is off unless the app is built with `NEXT_PUBLIC_WATTSMITH_WAHOO_FALLBACK=1`, is used only when a trainer has no FTMS control point, and has never been verified on hardware. It is promoted to a supported path only if this script finds an FTMS gap on the KICKR CORE.
+FTMS is the supported control path. [Pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20) also carries a fallback through Wahoo's proprietary trainer characteristic (`a026e005-0a7d-4ab3-97fa-f1500f9feb8b`, unlock `20 EE FC`, ERG `42 <watts uint16 LE>`) for KICKR firmware without FTMS. It is off unless the app is built with `NEXT_PUBLIC_WATTSMITH_WAHOO_FALLBACK=1`, is used only when a trainer has no FTMS control point, and has never been verified on hardware. When it is in use, the diagnostics page shows "Wahoo fallback (unsupported)" as the control path. It is promoted to a supported path only if this script finds an FTMS gap on the KICKR CORE.
 
 ## Follow-ups
 
