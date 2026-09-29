@@ -2,25 +2,30 @@
 
 ## North Star
 
-Wattsmith is an analysis-to-prescription workspace:
+Wattsmith is an open-source indoor training workspace that runs in the browser:
 
-`Completed rides from Strava → detailed Wattsmith analysis → custom workout design → export to TrainerRoad or another execution platform`
+`Build or import a structured workout → ride it on a smart trainer in ERG mode → keep the ride as a FIT file and in Wattsmith history → analyze it and turn findings into the next workout`
 
-The current audience is the rider/power user who wants trustworthy race and hard-ride analysis. Coach/rider collaboration is a later expansion built on explicit athlete consent and athlete-owned FIT/TCX uploads.
+The first trainer target is the Wahoo KICKR CORE over Web Bluetooth. The current audience is the rider/power user who wants trustworthy structured workouts and analysis without a paid platform. Coach/rider collaboration is a later expansion built on explicit athlete consent and athlete-owned files.
 
 ## Product Boundaries
 
-Wattsmith analyzes cycling power data, explains race and workout demands, turns selected findings into workout inputs, and exports workouts for execution elsewhere. It does not record rides, replace Strava history/social features, execute indoor workouts, compete with TrainerRoad as a player, expose one athlete’s Strava API data to another user, or add generative coaching before deterministic calculations are trusted.
+Wattsmith builds, imports, and exports structured workouts, is adding smart trainer control to ride them and FIT recording of each ride (ride mode is in progress, see Phase 3.5), and analyzes cycling power data to shape new workouts. It does not replace Strava history or social features, host a virtual world or racing, depend on a paid third-party service for its core path, expose one athlete's Strava API data to another user, or add generative coaching before deterministic calculations are trusted.
+
+Once ride recording ships, the planned default path to Strava is manual: download the `.fit` file and upload it at strava.com. Strava API features (analysis today, upload later) are optional and off unless a deployment configures its own Strava app, because Strava now requires a paid Strava subscription for Standard Tier API applications (Extended Access Tier applications are exempt but need Strava's review). Wattsmith would run as a Standard Tier application, so the planned public deployment will run with Strava off.
 
 ## External Constraints
 
-- Strava data is visible only to the connected athlete. Coach views will exclude raw and derived Strava displays unless future written policy approval explicitly permits them.
-- Raw and derived Strava caches expire within seven days. Full history means lazy backward pagination, not eager permanent replication.
-- Tokens are encrypted, rotated refresh tokens are persisted, OAuth scopes are product-visible, disconnect deletes the stored connection and cached records and revokes Strava access best-effort, and webhook deletion/deauthorization is idempotent.
-- New Strava applications have limited athlete capacity and require Strava review to scale.
+- Web Bluetooth runs only in Chromium browsers (Chrome, Edge, Opera, Samsung Internet) on macOS, Windows, ChromeOS and Android, with Linux behind a flag, and only over HTTPS or localhost. Firefox, Safari and iOS have no Web Bluetooth, so every ride page needs a clear fallback, such as the simulated trainer. The chooser must open from a click, and after a page reload it must open again.
+- Only one app may control the KICKR CORE at a time. The rider must close Zwift, the Wahoo app or a head unit that holds control, and the app must notice when another app takes control.
+- Nothing about trainer control is hardware-verified until the owner runs the [hardware test script](hardware-testing.md) on a KICKR CORE. CI covers the engine, codecs and file formats against specifications and a simulated trainer only.
+- Standard Tier Strava API applications require a paid Strava subscription; Extended Access Tier applications are exempt. Strava stays off unless `STRAVA_CLIENT_ID` is set.
+- When Strava is on: Strava data is visible only to the connected athlete, and coach views will exclude raw and derived Strava displays unless future written policy approval explicitly permits them.
+- When Strava is on: raw and derived Strava caches expire within seven days. Full history means lazy backward pagination, not eager permanent replication.
+- When Strava is on: tokens are encrypted, rotated refresh tokens are persisted, OAuth scopes are product-visible, disconnect deletes the stored connection and cached records and revokes Strava access best-effort, and webhook deletion/deauthorization is idempotent. New Strava applications have limited athlete capacity and require Strava review to scale.
 - Webhooks are preferred over polling; rate limits, revocation, incomplete streams, estimated power, and missing data are visible product states.
 
-## Phase 1: Cloud Foundation — Complete
+## Phase 1: Cloud Foundation - Complete
 
 - Auth.js application sign-in and Prisma/Postgres persistence.
 - Server-backed athlete profile and workout library.
@@ -30,7 +35,7 @@ Wattsmith analyzes cycling power data, explains race and workout demands, turns 
 
 Success gate: signed-in athletes own persisted profiles/workouts, legacy data can be imported safely, protected routes reject other users, and all Phase 1 tests pass.
 
-## Phase 1.5: Product Trust and Delivery Baseline — Complete
+## Phase 1.5: Product Trust and Delivery Baseline - Complete
 
 - Explicit, single-flight profile saving with preserved conflict drafts and reload-latest recovery.
 - Commit-once workout rename with Escape cancellation and failed-save restoration.
@@ -41,7 +46,7 @@ Success gate: signed-in athletes own persisted profiles/workouts, legacy data ca
 
 Success gate: normal editing cannot race profile or rename requests; unsaved work is not silently discarded; every pull request runs install, generation, tests, lint, and build.
 
-## Phase 2: Analytics Foundation — Implemented
+## Phase 2: Analytics Foundation - Implemented
 
 - Dated FTP history with migration backfill, current-value recomputation, protected CRUD, and activity-date lookup.
 - Separate revocable Strava OAuth connection with signed state, required scopes, AES-256-GCM token encryption, refresh rotation, disconnect, and webhooks.
@@ -51,7 +56,7 @@ Success gate: normal editing cannot race profile or rename requests; unsaved wor
 
 Success gate: every activity uses its historical FTP; only its connected athlete can request it; list and detail caches never exceed seven days; missing/estimated data is explained; `/demo` works without authentication.
 
-## Phase 3: Analysis to Prescription — In Progress
+## Phase 3: Analysis to Prescription - In Progress
 
 - Implemented: select an available 5-second, 30-second, 1-minute, 5-minute, or 20-minute peak demand from an activity.
 - Implemented: show the observed peak, deterministic 95% target, repeat count, and recovery before creating anything.
@@ -61,9 +66,29 @@ Success gate: every activity uses its historical FTP; only its connected athlete
 
 Success gate: the rider can explain which finding shaped the workout and edit every generated input before saving or exporting.
 
+## Phase 3.5: Ride Mode - In Progress
+
+Ride structured workouts on a smart trainer from the browser, starting with the Wahoo KICKR CORE. Each item is its own pull request.
+
+- Merged: MIT license.
+- Merged: platform-neutral workout engine (`src/lib/ride/engine`) with pause, skip, back, extend, FTP bias, ERG write throttling, and a 1 Hz recorder, plus a seeded simulated trainer with failure injection. A lint rule keeps the engine free of browser and React code so a future phone app can reuse it.
+- Merged: `.zwo`, `.erg` and `.mrc` import into an unsaved builder draft with a warnings report.
+- Merged: FIT encoder that writes a recorded ride as a virtual cycling activity (Strava's Virtual Ride type), with a golden file in `docs/ride-fixtures/`. No page offers the download yet.
+- Merged: Strava off unless `STRAVA_CLIENT_ID` is set.
+- In review: Web Bluetooth trainer layer (FTMS control first, Wahoo proprietary control only as an unsupported, flag-gated fallback) and the `/ride/devices` diagnostics page, in [pull request 20](https://github.com/codyjohnsontx/wattSmith/pull/20). It merges after the owner's [hardware test](hardware-testing.md) steps 1-10.
+- Planned: `/ride` page with live power, cadence and heart rate against the plan, controls, wake lock, and a crash-recovery buffer.
+- Planned: "Download .fit" on the ride finish screen, with manual upload at strava.com as the free default path to Strava.
+- Planned: saved rides in Postgres with a history list that reuses the activity analysis view.
+- Planned: signed-out `/demo/ride` on the simulated trainer.
+- Planned: free public deployment (Vercel Hobby and Neon Free) with a production `/demo` link.
+- Planned, off by default: Strava API upload of the FIT file, enabled only where a Strava app is configured.
+- Later: ANT+ FE-C trainers behind the same trainer interface, labeled as not hardware-verified until someone with an ANT+ stick confirms it; a Wahoo Cloud API experiment; an iPhone app reusing the engine.
+
+Success gate: a rider can pick or import a workout, ride it on a KICKR CORE with the trainer following every target, and download a FIT file that Strava accepts as a Virtual Ride, with each step recorded in the [hardware test results](hardware-testing.md#results-matrix).
+
 ## Phase 4: Athlete-Owned Imports and Coaching Foundation
 
-- Import athlete-owned FIT/TCX files and track provenance separately from Strava.
+- Import athlete-owned FIT/TCX ride files for analysis and track provenance separately from Strava and from rides recorded in Wattsmith.
 - Add rider/coach roles, invitations, consent, and revocation.
 - Permit coach access only to athlete-owned uploads and Wattsmith-authored records.
 - Let coaches create and assign workouts while Strava-derived raw data and displays remain excluded.
@@ -87,6 +112,6 @@ Success gate: longitudinal metrics are reproducible from documented inputs and r
 
 ## Deferred / Non-goals
 
-Calendar-first planning, AI-generated coaching, workout execution, social activity history, coach access to Strava data, production deployment automation, and permanent eager activity replication are explicitly deferred or excluded.
+Calendar-first planning, AI-generated coaching, a virtual world or racing, social activity history, coach access to Strava data, a required paid Strava subscription, and permanent eager activity replication are explicitly deferred or excluded.
 
 References: [Strava API policy](https://www.strava.com/legal/api_policy), [OAuth](https://developers.strava.com/docs/authentication/), [activity/stream reference](https://developers.strava.com/docs/reference/), [webhooks](https://developers.strava.com/docs/webhooks/), and [rate limits](https://developers.strava.com/docs/rate-limits/).

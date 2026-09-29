@@ -26,3 +26,5 @@
 - Local migration writes are capped at 100 workouts but remain sequential inside one transaction; chunk if real imports approach that cap.
 - Reusable workout blocks remain browser-local until a server-backed prescription or planning workflow depends on them.
 - Add accessibility automation to the public demo smoke suite and explicit reduced-motion visual checks.
+- Ride-mode FIT output is verified by an independent decoder and a golden file, but no Wattsmith FIT file has been uploaded to Strava or intervals.icu yet. Record that under step 15 of [hardware-testing.md](hardware-testing.md) and keep the golden file as the upload sample until the ride page offers a download.
+- The ride engine and simulated trainer are tested only in Vitest. The planned `/demo/ride` page should add a Playwright run of a whole workout on the simulator so the engine is exercised through the UI in CI.
